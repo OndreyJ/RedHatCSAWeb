@@ -1,0 +1,27 @@
+name: Manual Deployment
+
+on:
+  workflow_dispatch:  # Allows manual trigger in GitHub UI
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: self-hosted  # Uses your self-hosted runner machine
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Example: Copy repo files to a deployment directory
+      - name: Deploy files
+        run: |
+          echo "Starting deployment..."
+          DEPLOY_DIR="/var/www/myapp"  # change this path as needed
+
+          # Ensure the directory exists
+          mkdir -p "$DEPLOY_DIR"
+
+          # Copy files (excluding .git)
+          rsync -av --exclude='.git' ./ "$DEPLOY_DIR/"
+
+          echo "Deployment complete!"
