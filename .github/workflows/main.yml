@@ -24,6 +24,9 @@ jobs:
           # Copy files (excluding .git)
           rsync -av --exclude='.git' ./ "$DEPLOY_DIR/"
 
+          # Go to Frontend
+          cd /var/www/redhatweb/frontend
+          
           # Build Frontend
           ng build
 
