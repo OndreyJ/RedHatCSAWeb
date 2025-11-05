@@ -16,7 +16,7 @@ jobs:
       - name: Deploy files
         run: |
           echo "Starting deployment..."
-          DEPLOY_DIR="/var/www/myapp"  # change this path as needed
+          DEPLOY_DIR="/var/www/redhatweb"
 
           # Ensure the directory exists
           mkdir -p "$DEPLOY_DIR"
