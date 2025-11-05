@@ -24,4 +24,7 @@ jobs:
           # Copy files (excluding .git)
           rsync -av --exclude='.git' ./ "$DEPLOY_DIR/"
 
+          # Build Frontend
+          ng build
+
           echo "Deployment complete!"
