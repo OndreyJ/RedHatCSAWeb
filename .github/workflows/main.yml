@@ -26,6 +26,9 @@ jobs:
 
           # Go to Frontend
           cd /var/www/redhatweb/frontend
+
+          # Install dependencies
+          npm install
           
           # Build Frontend
           ng build
