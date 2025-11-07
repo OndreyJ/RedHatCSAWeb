@@ -22,7 +22,7 @@ jobs:
           mkdir -p "$DEPLOY_DIR"
 
           # Copy files (excluding .git)
-          rsync -av --include='frontend' --exclude='*'  ./ "$DEPLOY_DIR/"
+          rsync -av --include='frontend/***' --exclude='*'  ./ "$DEPLOY_DIR/"
 
           # Go to Frontend
           cd /var/www/redhatweb/frontend
