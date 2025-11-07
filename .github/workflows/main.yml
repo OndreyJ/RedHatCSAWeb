@@ -1,12 +1,12 @@
 name: Manual Deployment
 
 on:
-  workflow_dispatch:  # Allows manual trigger in GitHub UI
+  workflow_dispatch: # Allows manual trigger in GitHub UI
 
 jobs:
   deploy:
     name: Deploy to Server
-    runs-on: self-hosted  # Uses your self-hosted runner machine
+    runs-on: self-hosted # Uses your self-hosted runner machine
 
     steps:
       - name: Checkout code
@@ -22,14 +22,14 @@ jobs:
           mkdir -p "$DEPLOY_DIR"
 
           # Copy files (excluding .git)
-          rsync -av --exclude='.git' ./ "$DEPLOY_DIR/"
+          rsync -av --include='frontend' --exclude='*'  ./ "$DEPLOY_DIR/"
 
           # Go to Frontend
           cd /var/www/redhatweb/frontend
 
           # Install dependencies
           npm install
-          
+
           # Build Frontend
           ng build
 
