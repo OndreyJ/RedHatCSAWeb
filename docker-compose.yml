@@ -2,7 +2,6 @@ services:
   backend:
     build:
       context: ./backend # path to your backend Dockerfile
-    container_name: rhcsa-backend
     ports:
       - "5051:5051"
     environment:
