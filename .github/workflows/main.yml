@@ -30,7 +30,7 @@ jobs:
       - name: Build Backend Docker Image
         working-directory: ./backend
         run: |
-          docker build \
+          docker build --no-cache \
             --build-arg PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
             --build-arg PROXMOX_PASSWORD=${{ secrets.PROXMOX_PASSWORD }} \
             --build-arg TEMPLATE1=${{ secrets.TEMPLATE1 }} \
@@ -42,7 +42,7 @@ jobs:
       - name: Build Frontend Docker Image
         working-directory: ./frontend
         run: |
-          docker build -t redhatcsaweb-frontend .
+          docker build ---no-cache -t redhatcsaweb-frontend .
 
       # 6️⃣ Stop & remove old containers if exist
       - name: Stop old containers
