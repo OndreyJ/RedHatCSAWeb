@@ -2,30 +2,21 @@ version: "3.9"
 
 services:
   backend:
-    build:
-      context: ./backend
+    image: redhatcsaweb-backend
     container_name: rhcsa-backend
     ports:
       - "5051:5051"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - Proxmox__Host=https://your-proxmox-host:8006
-      - Proxmox__ApiToken=root@pam!apitoken=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-      - Proxmox__Node=pve
-    networks:
-      - rhcsa-net
+      PROXMOX_USER: "${PROXMOX_USER}"
+      PROXMOX_PASSWORD: "${PROXMOX_PASSWORD}"
+      TEMPLATE1: "${TEMPLATE1}"
+      TEMPLATE2: "${TEMPLATE2}"
+      TEMPLATE3: "${TEMPLATE3}"
 
   frontend:
-    build:
-      context: ./frontend
+    image: redhatcsaweb-frontend
     container_name: rhcsa-frontend
     ports:
-      - "4200:80"
+      - "80:80"
     depends_on:
       - backend
-    networks:
-      - rhcsa-net
-
-networks:
-  rhcsa-net:
-    driver: bridge
