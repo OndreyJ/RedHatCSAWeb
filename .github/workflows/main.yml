@@ -1,55 +1,72 @@
-name: CI/CD Deployment
+name: Deploy RedHat CSA Web
 
 on:
-  workflow_dispatch: # Manual trigger in GitHub UI
+  workflow_dispatch: # Manual trigger
 
 jobs:
   deploy:
-    name: Deploy to Server
-    runs-on: ubuntu-latest # or self-hosted if you have a runner
+    runs-on: self-hosted
+    name: Build and Deploy Frontend & Backend
 
     steps:
-      - name: Checkout code
+      # 1️⃣ Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Set up Node for frontend
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # 3️⃣ Build Frontend
+      - name: Build Angular Frontend
+        working-directory: ./frontend
+        run: |
+          npm install
+          npm run build -- --configuration production
+
+      # 4️⃣ Build Backend Docker image
       - name: Build Backend Docker Image
+        working-directory: ./backend
         run: |
           docker build \
-            --build-arg PROXMOX_USER="${{ secrets.PROXMOX_USER }}" \
-            --build-arg PROXMOX_PASSWORD="${{ secrets.PROXMOX_PASSWORD }}" \
-            --build-arg TEMPLATE1="${{ secrets.TEMPLATE1 }}" \
-            --build-arg TEMPLATE2="${{ secrets.TEMPLATE2 }}" \
-            --build-arg TEMPLATE3="${{ secrets.TEMPLATE3 }}" \
-            -t redhatcsaweb-backend ./backend
+            --build-arg PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
+            --build-arg PROXMOX_PASSWORD=${{ secrets.PROXMOX_PASSWORD }} \
+            --build-arg TEMPLATE1=${{ secrets.TEMPLATE1 }} \
+            --build-arg TEMPLATE2=${{ secrets.TEMPLATE2 }} \
+            --build-arg TEMPLATE3=${{ secrets.TEMPLATE3 }} \
+            -t redhatcsaweb-backend .
 
+      # 5️⃣ Build Frontend Docker image
       - name: Build Frontend Docker Image
+        working-directory: ./frontend
         run: |
-          docker build -t redhatcsaweb-frontend ./frontend
+          docker build -t redhatcsaweb-frontend .
 
-      - name: Deploy Containers via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            # Pull latest images (optional if building locally)
-            docker rm -f rhcsa-backend || true
-            docker rm -f rhcsa-frontend || true
+      # 6️⃣ Stop & remove old containers if exist
+      - name: Stop old containers
+        run: |
+          docker rm -f rhcsa-backend || true
+          docker rm -f rhcsa-frontend || true
 
-            # Run backend
-            docker run -d \
-              --name rhcsa-backend \
-              -p 5051:5051 \
-              -e PROXMOX_USER="${{ secrets.PROXMOX_USER }}" \
-              -e PROXMOX_PASSWORD="${{ secrets.PROXMOX_PASSWORD }}" \
-              -e TEMPLATE1="${{ secrets.TEMPLATE1 }}" \
-              -e TEMPLATE2="${{ secrets.TEMPLATE2 }}" \
-              -e TEMPLATE3="${{ secrets.TEMPLATE3 }}" \
-              redhatcsaweb-backend
+      # 7️⃣ Run Backend container
+      - name: Start Backend
+        run: |
+          docker run -d \
+            --name rhcsa-backend \
+            -p 5051:5051 \
+            -e PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
+            -e PROXMOX_PASSWORD=${{ secrets.PROXMOX_PASSWORD }} \
+            -e TEMPLATE1=${{ secrets.TEMPLATE1 }} \
+            -e TEMPLATE2=${{ secrets.TEMPLATE2 }} \
+            -e TEMPLATE3=${{ secrets.TEMPLATE3 }} \
+            redhatcsaweb-backend
 
-            # Run frontend
-            docker run -d \
-              --name rhcsa-frontend \
-              -p 80:80 \
-              redhatcsaweb-frontend
+      # 8️⃣ Run Frontend container
+      - name: Start Frontend
+        run: |
+          docker run -d \
+            --name rhcsa-frontend \
+            -p 80:80 \
+            redhatcsaweb-frontend
