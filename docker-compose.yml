@@ -6,7 +6,7 @@ services:
       context: ./backend
     container_name: rhcsa-backend
     ports:
-      - "5000:5000"
+      - "5051:5051"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - Proxmox__Host=https://your-proxmox-host:8006
