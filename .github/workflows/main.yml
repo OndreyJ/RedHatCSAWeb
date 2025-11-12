@@ -42,7 +42,7 @@ jobs:
       - name: Build Frontend Docker Image
         working-directory: ./frontend
         run: |
-          docker build ---no-cache -t redhatcsaweb-frontend .
+          docker build --no-cache -t redhatcsaweb-frontend .
 
       # 6️⃣ Stop & remove old containers if exist
       - name: Stop old containers
