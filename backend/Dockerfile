@@ -1,15 +1,20 @@
-# Build stage
+# Stage 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
+
+# Copy everything
 COPY . .
+
+# Restore and publish
 RUN dotnet restore
 RUN dotnet publish -c Release -o /app/publish
 
-# Runtime stage
+# Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
-COPY --from=build /app/publish .
-EXPOSE 5000
-ENV ASPNETCORE_URLS=http://+:5000
-ENTRYPOINT ["dotnet", "RHCSAExam.dll"]
 
+# Copy publish output from build stage
+COPY --from=build /app/publish .
+
+# Run the backend DLL
+ENTRYPOINT ["dotnet", "backend.dll"]

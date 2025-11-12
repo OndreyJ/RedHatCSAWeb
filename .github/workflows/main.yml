@@ -12,7 +12,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Example: Copy repo files to a deployment directory
       - name: Deploy files
         run: |
           echo "Starting deployment..."
@@ -22,15 +21,50 @@ jobs:
           mkdir -p "$DEPLOY_DIR"
 
           # Copy files (excluding .git)
-          rsync -av --include='frontend/***' --exclude='*'  ./ "$DEPLOY_DIR/"
+          rsync -av --include='frontend/***' --exclude='*' ./ "$DEPLOY_DIR/"
 
-          # Go to Frontend
+      - name: Build Frontend
+        run: |
+          cd /var/www/redhatweb/frontend
+          npm install
+          ng build --configuration production
+
+      - name: Build and run backend Docker container
+        run: |
+          cd /var/www/redhatweb/backend
+
+          # Use GitHub secrets for environment variables
+          docker build \
+            --build-arg PROXMOX_USER="${{ secrets.PROXMOX_USER }}" \
+            --build-arg PROXMOX_PASSWORD="${{ secrets.PROXMOX_PASSWORD }}" \
+            --build-arg TEMPLATE1="${{ secrets.TEMPLATE1 }}" \
+            --build-arg TEMPLATE2="${{ secrets.TEMPLATE2 }}" \
+            --build-arg TEMPLATE3="${{ secrets.TEMPLATE3 }}" \
+            -t redhatcsaweb-backend .
+
+          # Stop old container if exists
+          docker rm -f rhcsa-backend || true
+
+          # Run container with secrets as environment variables
+          docker run -d \
+            --name rhcsa-backend \
+            -p 5051:5051 \
+            -e PROXMOX_USER="${{ secrets.PROXMOX_USER }}" \
+            -e PROXMOX_PASSWORD="${{ secrets.PROXMOX_PASSWORD }}" \
+            -e TEMPLATE1="${{ secrets.TEMPLATE1 }}" \
+            -e TEMPLATE2="${{ secrets.TEMPLATE2 }}" \
+            -e TEMPLATE3="${{ secrets.TEMPLATE3 }}" \
+            redhatcsaweb-backend
+
+      - name: Build and run frontend Docker container
+        run: |
           cd /var/www/redhatweb/frontend
 
-          # Install dependencies
-          npm install
+          docker build -t redhatcsaweb-frontend .
 
-          # Build Frontend
-          ng build
+          docker rm -f rhcsa-frontend || true
 
-          echo "Deployment complete!"
+          docker run -d -p 80:80 --name rhcsa-frontend redhatcsaweb-frontend
+
+      - name: Deployment complete
+        run: echo "Deployment complete!"

@@ -528,3 +528,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+
+.angular/
+.dist/
