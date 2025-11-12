@@ -1,18 +1,31 @@
-version: "3.9" # can remove if you want
+version: "3.9"
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
     container_name: rhcsa-backend
     ports:
-      - "5000:80"
-    restart: unless-stopped
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Proxmox__Host=https://your-proxmox-host:8006
+      - Proxmox__ApiToken=root@pam!apitoken=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      - Proxmox__Node=pve
+    networks:
+      - rhcsa-net
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
     container_name: rhcsa-frontend
     ports:
-      - "80:80"
+      - "4200:80"
     depends_on:
       - backend
-    restart: unless-stopped
+    networks:
+      - rhcsa-net
+
+networks:
+  rhcsa-net:
+    driver: bridge
