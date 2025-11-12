@@ -1,9 +1,8 @@
-version: "3.9"
-
 services:
   backend:
-    image: redhatcsaweb-backend
-    container_name: backend
+    build:
+      context: ./backend # path to your backend Dockerfile
+    container_name: rhcsa-backend
     ports:
       - "5051:5051"
     environment:
@@ -14,8 +13,9 @@ services:
       TEMPLATE3: "${TEMPLATE3}"
 
   frontend:
-    image: redhatcsaweb-frontend
-    container_name: frontend
+    build:
+      context: ./frontend # path to your frontend Dockerfile
+    container_name: rhcsa-frontend
     ports:
       - "80:80"
     depends_on:
