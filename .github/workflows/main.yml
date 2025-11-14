@@ -54,11 +54,15 @@ jobs:
           docker run -d --name rhcsa-backend \
             --network rhcsa-net \
             -p 8080:8080 \
-            -e PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
+            -e PROXMOX_USER=${{ secrets.PROXMOX_USERNAME }} \
             -e PROXMOX_PASSWORD=${{ secrets.PROXMOX_PASSWORD }} \
-            -e TEMPLATE1=${{ secrets.TEMPLATE1 }} \
-            -e TEMPLATE2=${{ secrets.TEMPLATE2 }} \
-            -e TEMPLATE3=${{ secrets.TEMPLATE3 }} \
+            -e Proxmox__Templates__Server1=${{ secrets.PROXMOX_TEMPLATE_SERVER1 }} \
+            -e Proxmox__Templates__Server2=${{ secrets.PROXMOX_TEMPLATE_SERVER2 }} \
+            -e Proxmox__Templates__Server3=${{ secrets.PROXMOX_TEMPLATE_SERVER3 }} \
+            -e Proxmox__Host=${{ secrets.PROXMOX_API_URL }} \
+            -e Proxmox__Node=${{ secrets.PROXMOX_NODE }} \
+            -e Proxmox__ApiToken=${{ secrets.PROXMOX_TOKEN }}
+
             redhatcsaweb-backend
 
           # Run frontend
