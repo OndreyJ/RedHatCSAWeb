@@ -14,9 +14,6 @@ builder.Services.AddSingleton<ProxmoxService>(sp =>
 
 var app = builder.Build();
 
-// Middleware
-app.UseHttpsRedirection();
-
 app.UseRouting();
 
 // Optional: authorization middleware
