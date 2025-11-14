@@ -2,8 +2,7 @@ using RHCSAExam.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-//error logging
+// Error logging
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Debug);
@@ -30,11 +29,11 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// CRITICAL: Routing must come BEFORE CORS
+app.UseRouting();
 app.UseCors("AllowAllOrigins");
 
-app.UseRouting();
-
-// Optional: authorization middleware
+// Authorization middleware
 app.UseAuthorization();
 
 // Map controllers
