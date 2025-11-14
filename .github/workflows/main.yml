@@ -48,7 +48,7 @@ jobs:
       # 7️⃣ Create network and start containers
       - name: Create network & start containers
         run: |
-          docker network create rhcsa-net || true
+          docker network inspect rhcsa-net >/dev/null 2>&1 || docker network create rhcsa-net
 
           # Run backend
           docker run -d --name rhcsa-backend \
@@ -62,7 +62,6 @@ jobs:
             -e Proxmox__Host=${{ secrets.PROXMOX_API_URL }} \
             -e Proxmox__Node=${{ secrets.PROXMOX_NODE }} \
             -e Proxmox__ApiToken=${{ secrets.PROXMOX_TOKEN }}
-
             redhatcsaweb-backend
 
           # Run frontend
