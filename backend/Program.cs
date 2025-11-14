@@ -1,9 +1,16 @@
+using RHCSAExam.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add controllers
+// Add services to the container
 builder.Services.AddControllers();
 
-// builder.Services.AddSingleton<ProxmoxService>();
+// Register ProxmoxService with DI
+builder.Services.AddSingleton<ProxmoxService>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    return new ProxmoxService(config);
+});
 
 var app = builder.Build();
 
@@ -12,7 +19,7 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 
-// Authorization (optional)
+// Optional: authorization middleware
 app.UseAuthorization();
 
 // Map controllers
