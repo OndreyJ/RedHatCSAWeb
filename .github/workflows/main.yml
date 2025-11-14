@@ -31,11 +31,6 @@ jobs:
         working-directory: ./backend
         run: |
           docker build --no-cache \
-            --build-arg PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
-            --build-arg PROXMOX_PASSWORD=${{ secrets.PROXMOX_PASSWORD }} \
-            --build-arg TEMPLATE1=${{ secrets.TEMPLATE1 }} \
-            --build-arg TEMPLATE2=${{ secrets.TEMPLATE2 }} \
-            --build-arg TEMPLATE3=${{ secrets.TEMPLATE3 }} \
             -t redhatcsaweb-backend .
 
       # 5️⃣ Build Frontend Docker image
@@ -50,12 +45,15 @@ jobs:
           docker rm -f rhcsa-backend || true
           docker rm -f rhcsa-frontend || true
 
-      # 7️⃣ Run Backend container
-      - name: Start Backend
+      # 7️⃣ Create network and start containers
+      - name: Create network & start containers
         run: |
-          docker run -d \
-            --name rhcsa-backend \
-            -p 5051:5051 \
+          docker network create rhcsa-net || true
+
+          # Run backend
+          docker run -d --name rhcsa-backend \
+            --network rhcsa-net \
+            -p 8080:8080 \
             -e PROXMOX_USER=${{ secrets.PROXMOX_USER }} \
             -e PROXMOX_PASSWORD=${{ secrets.PROXMOX_PASSWORD }} \
             -e TEMPLATE1=${{ secrets.TEMPLATE1 }} \
@@ -63,10 +61,8 @@ jobs:
             -e TEMPLATE3=${{ secrets.TEMPLATE3 }} \
             redhatcsaweb-backend
 
-      # 8️⃣ Run Frontend container
-      - name: Start Frontend
-        run: |
-          docker run -d \
-            --name rhcsa-frontend \
+          # Run frontend
+          docker run -d --name rhcsa-frontend \
+            --network rhcsa-net \
             -p 80:80 \
             redhatcsaweb-frontend
