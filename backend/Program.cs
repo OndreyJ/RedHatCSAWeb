@@ -2,6 +2,12 @@ using RHCSAExam.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+//error logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Debug);
+
 // Add services to the container
 builder.Services.AddControllers();
 
