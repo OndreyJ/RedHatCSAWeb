@@ -18,7 +18,19 @@ builder.Services.AddSingleton<ProxmoxService>(sp =>
     return new ProxmoxService(config);
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAllOrigins", builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build();
+
+app.UseCors("AllowAllOrigins");
 
 app.UseRouting();
 
