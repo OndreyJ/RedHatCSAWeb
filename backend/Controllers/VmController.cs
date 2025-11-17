@@ -264,17 +264,62 @@ namespace RHCSAExam.Controllers
             return Ok(new SessionStatus
             {
                 SessionId = sessionId,
-                Server1 = vm1Status,
-                Server2 = vm2Status,
-                Server3 = vm3Status
+                Server1 = vm1Status ?? new VmStatus { VmId = session.Vm1Id, Status = "unknown", Name = "server1", Uptime = 0 },
+                Server2 = vm2Status ?? new VmStatus { VmId = session.Vm2Id, Status = "unknown", Name = "server2", Uptime = 0 },
+                Server3 = vm3Status ?? new VmStatus { VmId = session.Vm3Id, Status = "unknown", Name = "server3", Uptime = 0 }
             });
         }
 
-        // Get VNC ticket for terminal access
+        // Get noVNC console URL for VM - NEW METHOD
+        [HttpPost("session/{sessionId}/vm/{vmName}/console")]
+        public async Task<ActionResult> GetVmConsole(string sessionId, string vmName)
+        {
+            _logger.LogInformation("GetVmConsole called - SessionId: {SessionId}, VmName: {VmName}", sessionId, vmName);
+
+            if (!_userSessions.TryGetValue(sessionId, out var session))
+            {
+                _logger.LogWarning("Session not found: {SessionId}", sessionId);
+                return NotFound(new { message = "Session not found" });
+            }
+
+            var vmId = GetVmIdByName(session, vmName);
+            if (vmId == 0)
+            {
+                _logger.LogWarning("Invalid VM name: {VmName}", vmName);
+                return BadRequest(new { message = $"Invalid VM name: {vmName}" });
+            }
+
+            _logger.LogInformation("Getting console URL for VM {VmId}...", vmId);
+
+            try
+            {
+                // Get VNC ticket from Proxmox
+                var ticket = await _proxmoxService.GetVncTicket(vmId);
+                
+                // Build the full noVNC console URL
+                var consoleUrl = _proxmoxService.BuildNoVncConsoleUrl(vmId, ticket);
+                
+                _logger.LogInformation("Console URL generated for VM {VmId}", vmId);
+
+                return Ok(new
+                {
+                    url = consoleUrl,
+                    ticket = ticket.Ticket,
+                    port = ticket.Port
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get console URL for VM {VmId}", vmId);
+                return StatusCode(500, new { message = $"Failed to get console URL: {ex.Message}" });
+            }
+        }
+
+        // DEPRECATED - kept for backward compatibility
         [HttpGet("session/{sessionId}/vm/{vmName}/console")]
         public async Task<ActionResult<VncTicket>> GetConsoleTicket(string sessionId, string vmName)
         {
-            _logger.LogInformation("GetConsoleTicket called - SessionId: {SessionId}, VmName: {VmName}", sessionId, vmName);
+            _logger.LogInformation("GetConsoleTicket called (deprecated) - SessionId: {SessionId}, VmName: {VmName}", sessionId, vmName);
 
             if (!_userSessions.TryGetValue(sessionId, out var session))
             {

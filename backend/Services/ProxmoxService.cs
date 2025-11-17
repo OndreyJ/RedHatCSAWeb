@@ -252,6 +252,23 @@ namespace RHCSAExam.Services
             }
         }
 
+        // Build complete noVNC console URL - NEW METHOD
+        public string BuildNoVncConsoleUrl(int vmId, VncTicket ticket)
+        {
+            _logger.LogInformation("Building noVNC console URL for VM {VmId}", vmId);
+
+            // Encode the ticket for URL safety
+            var encodedTicket = Uri.EscapeDataString(ticket.Ticket);
+
+            // Build the complete noVNC URL that can be embedded in an iframe
+            // This URL points to Proxmox's built-in noVNC viewer
+            var consoleUrl = $"{_proxmoxHost}/?console=kvm&novnc=1&vmid={vmId}&node={_node}&port={ticket.Port}&ticket={encodedTicket}";
+
+            _logger.LogInformation("Generated console URL: {Url}", consoleUrl);
+
+            return consoleUrl;
+        }
+
         // Helper to get next available VM ID
         private async Task<int> GetNextVmId()
         {
@@ -359,7 +376,6 @@ namespace RHCSAExam.Services
 
             return wsUrl;
         }
-
     }
 
     // Response models
