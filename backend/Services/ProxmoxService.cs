@@ -223,26 +223,20 @@ namespace RHCSAExam.Services
             _logger.LogInformation("Getting VNC ticket for VM {VmId}", vmId);
 
             var url = $"{_proxmoxHost}/api2/json/nodes/{_node}/qemu/{vmId}/vncproxy";
-            var payload = new { websocket = 1 };
 
-            var content = new StringContent(
-                JsonSerializer.Serialize(payload),
-                Encoding.UTF8,
-                "application/json"
-            );
+            var payload = new { websocket = 1 };
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
             try
             {
                 var response = await _httpClient.PostAsync(url, content);
-                var responseBody = await response.Content.ReadAsStringAsync();
+                var body = await response.Content.ReadAsStringAsync();
 
-                _logger.LogDebug("VNC ticket response: {StatusCode} - {Body}", response.StatusCode, responseBody);
+                _logger.LogDebug("VNC ticket response: {Status} - {Body}", response.StatusCode, body);
 
                 response.EnsureSuccessStatusCode();
 
-                var result = JsonSerializer.Deserialize<ProxmoxApiResponse<VncTicketData>>(responseBody);
-
-                _logger.LogInformation("VNC ticket obtained for VM {VmId}", vmId);
+                var result = JsonSerializer.Deserialize<ProxmoxApiResponse<VncTicketData>>(body);
 
                 return new VncTicket
                 {
@@ -253,7 +247,7 @@ namespace RHCSAExam.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to get VNC ticket for VM {VmId}", vmId);
+                _logger.LogError(ex, "Failed to obtain VNC ticket for VM {VmId}", vmId);
                 throw;
             }
         }
@@ -347,6 +341,25 @@ namespace RHCSAExam.Services
                 throw;
             }
         }
+
+        public async Task<string> GetVncWebsocketUrl(int vmId)
+        {
+            _logger.LogInformation("Building noVNC WebSocket URL for VM {VmId}", vmId);
+
+            var ticketInfo = await GetVncTicket(vmId);
+
+            // Encode ticket for URL
+            var encodedTicket = Uri.EscapeDataString(ticketInfo.Ticket);
+
+            // Final websocket URL that noVNC connects to
+            var wsUrl =
+                $"{_proxmoxHost.Replace("https", "wss")}/api2/json/nodes/{_node}/qemu/{vmId}/vncwebsocket?port={ticketInfo.Port}&vncticket={encodedTicket}";
+
+            _logger.LogInformation("Generated noVNC WebSocket URL: {Url}", wsUrl);
+
+            return wsUrl;
+        }
+
     }
 
     // Response models

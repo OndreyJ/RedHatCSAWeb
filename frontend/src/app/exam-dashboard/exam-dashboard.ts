@@ -8,10 +8,9 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
   selector: 'app-exam-dashboard',
   imports: [CommonModule],
   templateUrl: './exam-dashboard.html',
-  styleUrl: './exam-dashboard.css',
+  styleUrls: ['./exam-dashboard.css'], // fixed typo
   standalone: true,
 })
-
 export class ExamDashboard implements OnInit, OnDestroy {
   @ViewChild('terminalFrame', { static: false }) terminalFrame!: ElementRef;
 
@@ -32,25 +31,18 @@ export class ExamDashboard implements OnInit, OnDestroy {
   ) { }
 
   ngOnInit(): void {
-    // Check if there's an existing session
     const existingSession = this.vmService.getSessionId();
     if (existingSession) {
       this.examStarted = true;
       this.loadSessionData();
     }
 
-    // Subscribe to questions
     this.subscriptions.push(
-      this.vmService.questions$.subscribe(questions => {
-        this.questions = questions;
-      })
+      this.vmService.questions$.subscribe(qs => (this.questions = qs))
     );
 
-    // Subscribe to session status
     this.subscriptions.push(
-      this.vmService.sessionStatus$.subscribe(status => {
-        this.sessionStatus = status;
-      })
+      this.vmService.sessionStatus$.subscribe(status => (this.sessionStatus = status))
     );
   }
 
@@ -58,14 +50,13 @@ export class ExamDashboard implements OnInit, OnDestroy {
     this.subscriptions.forEach(sub => sub.unsubscribe());
   }
 
-  // Start exam session
+  // --- Exam session ---
   startExam(): void {
     this.loading = true;
     this.error = null;
 
     this.vmService.startExamSession('user-' + Date.now()).subscribe({
       next: (session) => {
-        console.log('Exam session started:', session);
         this.examStarted = true;
         this.loading = false;
       },
@@ -77,11 +68,8 @@ export class ExamDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // End exam session
   endExam(): void {
-    if (!confirm('Are you sure you want to end the exam? All VMs will be deleted.')) {
-      return;
-    }
+    if (!confirm('Are you sure you want to end the exam? All VMs will be deleted.')) return;
 
     this.loading = true;
     this.vmService.endSession().subscribe({
@@ -101,36 +89,32 @@ export class ExamDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // Load session data
   private loadSessionData(): void {
     this.vmService.getSessionStatus().subscribe({
-      next: (status) => {
-        this.sessionStatus = status;
-      },
-      error: (err) => {
-        console.error('Failed to load session:', err);
-      }
+      next: (status) => this.sessionStatus = status,
+      error: (err) => console.error('Failed to load session:', err)
     });
   }
 
-  // Toggle question expansion
   toggleQuestion(questionId: number): void {
     this.vmService.toggleQuestionExpanded(questionId);
   }
 
-  // Update question status
   updateQuestionStatus(questionId: number, status: 'pending' | 'completed' | 'flagged'): void {
     this.vmService.updateQuestionStatus(questionId, status);
   }
 
-  // Start VM
+  resetExam(): void {
+    if (!confirm('Reset all question progress?')) return;
+    this.vmService.resetExam();
+  }
+
+  // --- VM control ---
   startVm(vmName: string): void {
     this.loading = true;
     this.vmService.startVm(vmName).subscribe({
       next: () => {
-        console.log(`${vmName} started`);
         this.loading = false;
-        // Refresh status
         setTimeout(() => this.loadSessionData(), 2000);
       },
       error: (err) => {
@@ -141,18 +125,12 @@ export class ExamDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // Stop VM
   stopVm(vmName: string): void {
     this.loading = true;
     this.vmService.stopVm(vmName).subscribe({
       next: () => {
-        console.log(`${vmName} stopped`);
+        if (this.activeTerminal === vmName) this.closeTerminal();
         this.loading = false;
-        // Close terminal if this VM's terminal is open
-        if (this.activeTerminal === vmName) {
-          this.closeTerminal();
-        }
-        // Refresh status
         setTimeout(() => this.loadSessionData(), 2000);
       },
       error: (err) => {
@@ -163,10 +141,8 @@ export class ExamDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // Get VM status
   getVmStatus(vmName: string): string {
     if (!this.sessionStatus) return 'unknown';
-
     switch (vmName) {
       case 'server1': return this.sessionStatus.server1?.status || 'unknown';
       case 'server2': return this.sessionStatus.server2?.status || 'unknown';
@@ -175,10 +151,8 @@ export class ExamDashboard implements OnInit, OnDestroy {
     }
   }
 
-  // Get VM ID
   getVmId(vmName: string): number | null {
     if (!this.sessionStatus) return null;
-
     switch (vmName) {
       case 'server1': return this.sessionStatus.server1?.vmid || null;
       case 'server2': return this.sessionStatus.server2?.vmid || null;
@@ -187,12 +161,11 @@ export class ExamDashboard implements OnInit, OnDestroy {
     }
   }
 
-  // Check if VM is running
   isVmRunning(vmName: string): boolean {
     return this.getVmStatus(vmName) === 'running';
   }
 
-  // Open Proxmox noVNC terminal
+  // --- Terminal (iframe method) ---
   openTerminal(vmName: string): void {
     if (!this.isVmRunning(vmName)) {
       alert('Please start the VM first.');
@@ -208,11 +181,8 @@ export class ExamDashboard implements OnInit, OnDestroy {
     this.loading = true;
     this.error = null;
 
-    // Request noVNC console URL from backend
     this.vmService.getVncConsoleUrl(vmName).subscribe({
       next: (response) => {
-        // Response should contain the noVNC URL with ticket
-        // Format: https://proxmox:8006/?console=kvm&novnc=1&vmid=XXX&node=YYY&resize=scale&ticket=...
         this.terminalUrl = this.sanitizer.bypassSecurityTrustResourceUrl(response.url);
         this.activeTerminal = vmName;
         this.loading = false;
@@ -225,13 +195,12 @@ export class ExamDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // Close terminal
   closeTerminal(): void {
     this.activeTerminal = null;
     this.terminalUrl = null;
   }
 
-  // Get status icon class
+  // --- Helpers ---
   getStatusIconClass(status: string): string {
     switch (status) {
       case 'completed': return 'status-completed';
@@ -240,18 +209,9 @@ export class ExamDashboard implements OnInit, OnDestroy {
     }
   }
 
-  // Get progress percentage
   getProgressPercentage(): number {
     if (this.questions.length === 0) return 0;
     const completed = this.questions.filter(q => q.status === 'completed').length;
     return Math.round((completed / this.questions.length) * 100);
-  }
-
-  // Reset exam (for testing)
-  resetExam(): void {
-    if (!confirm('Reset all question progress?')) {
-      return;
-    }
-    this.vmService.resetExam();
   }
 }

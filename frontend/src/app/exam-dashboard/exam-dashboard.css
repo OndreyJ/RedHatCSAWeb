@@ -362,4 +362,11 @@ button:disabled {
   .vm-card {
     padding: 10px;
   }
+
+  .novnc-canvas {
+    width: 100%;
+    height: 800px;
+    background: black;
+    display: block;
+  }
 }

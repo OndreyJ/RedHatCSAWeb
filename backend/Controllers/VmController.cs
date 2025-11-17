@@ -369,6 +369,30 @@ namespace RHCSAExam.Controllers
             return Ok(new { cleanedSessions = oldSessions.Count });
         }
 
+        [HttpPost("novnc")]
+        public async Task<IActionResult> GetNoVncUrl([FromQuery] int vmId)
+        {
+            try
+            {
+                var wsUrl = await _proxmoxService.GetVncWebsocketUrl(vmId);
+
+                return Ok(new
+                {
+                    vmId = vmId,
+                    websocketUrl = wsUrl
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    error = "Failed to get noVNC URL",
+                    message = ex.Message
+                });
+            }
+        }
+
+
         private int GetVmIdByName(UserVmSession session, string vmName)
         {
             return vmName.ToLower() switch
