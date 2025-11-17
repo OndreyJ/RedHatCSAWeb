@@ -186,59 +186,17 @@ export class ExamDashboard implements OnInit, OnDestroy {
     }
   }
 
-  // Get VM ID
-  getVmId(vmName: string): number | null {
-    if (!this.sessionStatus) return null;
-    switch (vmName) {
-      case 'server1': return this.sessionStatus.server1?.vmid || null;
-      case 'server2': return this.sessionStatus.server2?.vmid || null;
-      case 'server3': return this.sessionStatus.server3?.vmid || null;
-      default: return null;
-    }
-  }
-
   // Check if VM is running
   isVmRunning(vmName: string): boolean {
     return this.getVmStatus(vmName) === 'running';
   }
 
-  // Open Proxmox noVNC terminal (robust version)
+  // Open Proxmox noVNC terminal
   openTerminal(vmName: string): void {
-    const sessionId = this.vmService.getSessionId();
-    console.log("openTerminal called:", { vmName, sessionId });
-
-    if (!sessionId) {
-      alert("No active exam session found. Start the exam first.");
-      return;
-    }
-
-    if (!this.sessionStatus) {
-      alert("Session status not loaded yet. Please wait a few seconds.");
-      console.warn("Session status is null. Cannot open terminal:", { vmName });
-      return;
-    }
-
-    // Get VM ID safely
-    let vmId: number | null = null;
-    switch (vmName.toLowerCase()) {
-      case "server1":
-        vmId = this.sessionStatus.server1?.vmid ?? null;
-        break;
-      case "server2":
-        vmId = this.sessionStatus.server2?.vmid ?? null;
-        break;
-      case "server3":
-        vmId = this.sessionStatus.server3?.vmid ?? null;
-        break;
-      default:
-        vmId = null;
-    }
-
-    console.log("Resolved VM ID:", vmId);
-
-    if (!vmId) {
-      alert(`VM ID not found for ${vmName}. Check backend session creation.`);
-    }
+    console.log("=== openTerminal called ===");
+    console.log("VM Name:", vmName);
+    console.log("Session ID:", this.vmService.getSessionId());
+    console.log("Session Status:", this.sessionStatus);
 
     if (!this.isVmRunning(vmName)) {
       alert("Please start the VM first.");
@@ -248,10 +206,13 @@ export class ExamDashboard implements OnInit, OnDestroy {
     this.loading = true;
     this.error = null;
 
-    // Call backend to get noVNC URL
+    console.log("Calling backend console endpoint...");
+
+    // Call backend to get noVNC URL - backend handles VM ID lookup
     this.vmService.getVncConsoleUrl(vmName).subscribe({
       next: (response) => {
-        console.log("Backend response for console URL:", response);
+        console.log("Backend response:", response);
+
         if (!response?.url) {
           this.error = "No console URL returned from backend.";
           this.loading = false;
@@ -262,29 +223,14 @@ export class ExamDashboard implements OnInit, OnDestroy {
         this.terminalUrl = this.sanitizer.bypassSecurityTrustResourceUrl(response.url);
         this.activeTerminal = vmName;
         this.loading = false;
+
+        console.log("Console opened successfully!");
       },
       error: (err) => {
         console.error("Failed to get console URL:", err);
+        console.error("Error status:", err.status);
+        console.error("Error body:", err.error);
         this.error = `Failed to open terminal: ${err.error?.message || err.message || 'Unknown error'}`;
-        this.loading = false;
-      }
-    });
-  }
-
-  // Fetch noVNC console URL
-  private fetchTerminalUrl(vmName: string) {
-    this.loading = true;
-    this.error = null;
-
-    this.vmService.getVncConsoleUrl(vmName).subscribe({
-      next: (response) => {
-        this.terminalUrl = this.sanitizer.bypassSecurityTrustResourceUrl(response.url);
-        this.activeTerminal = vmName;
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Failed to get console URL:', err);
-        this.error = 'Failed to open terminal console.';
         this.loading = false;
       }
     });
