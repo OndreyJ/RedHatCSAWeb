@@ -430,13 +430,8 @@ namespace RHCSAExam.Services
 
     public class VncTicketData
     {
-        [JsonPropertyName("ticket")]
         public string Ticket { get; set; }
-
-        [JsonPropertyName("port")]
         public int Port { get; set; }
-
-        [JsonPropertyName("upid")]
         public string Upid { get; set; }
     }
 
