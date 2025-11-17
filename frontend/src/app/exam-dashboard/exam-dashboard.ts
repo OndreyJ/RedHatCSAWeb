@@ -204,6 +204,23 @@ export class ExamDashboard implements OnInit, OnDestroy {
 
   // Open terminal (iframe method)
   openTerminal(vmName: string): void {
+
+    console.log('Requesting VNC console for VM:', vmName, 'Session ID:', this.vmService.getSessionId());
+    this.vmService.getVncConsoleUrl(vmName).subscribe({
+      next: (response) => {
+        console.log('VNC response:', response);
+        this.terminalUrl = this.sanitizer.bypassSecurityTrustResourceUrl(response.url);
+        this.activeTerminal = vmName;
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Failed to get console URL:', err);
+        this.error = 'Failed to open terminal console.';
+        this.loading = false;
+      }
+    });
+
+
     if (!this.isVmRunning(vmName)) {
       alert('Please start the VM first.');
       return;
