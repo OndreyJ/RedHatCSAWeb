@@ -6,12 +6,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      Proxmox__Templates__Server1: "${Proxmox__Templates__Server1}"
-      Proxmox__Templates__Server2: "${Proxmox__Templates__Server2}"
-      Proxmox__Templates__Server3: "${Proxmox__Templates__Server3}"
-      Proxmox__Host: "${Proxmox__Host}"
-      Proxmox__Node: "${Proxmox__Node}"
-      Proxmox__ApiToken: "${Proxmox__ApiToken}"
+      Proxmox__Templates__Server1: "${PROXMOX__TEMPLATES__SERVER1}"
+      Proxmox__Templates__Server2: "${PROXMOX__TEMPLATES__SERVER2}"
+      Proxmox__Templates__Server3: "${PROXMOX__TEMPLATES__SERVER3}"
+      Proxmox__Host: "${PROXMOX__HOST}"
+      Proxmox__Node: "${PROXMOX__NODE}"
+      Proxmox__ApiToken: "${PROXMOX__APITOKEN}"
     networks:
       rhcsa-net:
         ipv4_address: 172.20.0.2
