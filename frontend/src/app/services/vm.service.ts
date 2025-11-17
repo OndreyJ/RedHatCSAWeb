@@ -125,11 +125,11 @@ export class VmService {
     if (!sessionId) {
       return throwError(() => new Error('No active session'));
     }
-    return this.http.post<VncConsoleResponse>(
-      `${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/console`,
-      {}
+    return this.http.get<VncConsoleResponse>(
+      `${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/console`
     );
   }
+
 
   // End exam session
   endSession(): Observable<any> {
