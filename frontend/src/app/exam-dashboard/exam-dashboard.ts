@@ -238,7 +238,6 @@ export class ExamDashboard implements OnInit, OnDestroy {
 
     if (!vmId) {
       alert(`VM ID not found for ${vmName}. Check backend session creation.`);
-      return;
     }
 
     if (!this.isVmRunning(vmName)) {
