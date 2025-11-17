@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { Observable, BehaviorSubject, throwError } from 'rxjs';
 import { environment } from '../environments/environment';
 
 export interface ExamSession {
@@ -12,7 +12,7 @@ export interface ExamSession {
 }
 
 export interface VmStatus {
-  vmId: number;
+  vmid: number;
   status: string;
   name: string;
   uptime: number;
@@ -32,6 +32,12 @@ export interface Question {
   requiredVMs: string[];
   status: 'pending' | 'completed' | 'flagged';
   expanded: boolean;
+}
+
+export interface VncConsoleResponse {
+  url: string;
+  ticket: string;
+  port: number;
 }
 
 @Injectable({
@@ -81,7 +87,7 @@ export class VmService {
   startVm(vmName: string): Observable<any> {
     const sessionId = this.getSessionId();
     if (!sessionId) {
-      throw new Error('No active session');
+      return throwError(() => new Error('No active session'));
     }
     return this.http.post(`${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/start`, {});
   }
@@ -90,7 +96,7 @@ export class VmService {
   stopVm(vmName: string): Observable<any> {
     const sessionId = this.getSessionId();
     if (!sessionId) {
-      throw new Error('No active session');
+      return throwError(() => new Error('No active session'));
     }
     return this.http.post(`${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/stop`, {});
   }
@@ -99,7 +105,7 @@ export class VmService {
   getVmStatus(vmName: string): Observable<VmStatus> {
     const sessionId = this.getSessionId();
     if (!sessionId) {
-      throw new Error('No active session');
+      return throwError(() => new Error('No active session'));
     }
     return this.http.get<VmStatus>(`${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/status`);
   }
@@ -108,16 +114,28 @@ export class VmService {
   getSessionStatus(): Observable<SessionStatus> {
     const sessionId = this.getSessionId();
     if (!sessionId) {
-      throw new Error('No active session');
+      return throwError(() => new Error('No active session'));
     }
     return this.http.get<SessionStatus>(`${this.apiUrl}/vm/session/${sessionId}/status`);
+  }
+
+  // Get noVNC console URL for VM
+  getVncConsoleUrl(vmName: string): Observable<VncConsoleResponse> {
+    const sessionId = this.getSessionId();
+    if (!sessionId) {
+      return throwError(() => new Error('No active session'));
+    }
+    return this.http.post<VncConsoleResponse>(
+      `${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/console`,
+      {}
+    );
   }
 
   // End exam session
   endSession(): Observable<any> {
     const sessionId = this.getSessionId();
     if (!sessionId) {
-      throw new Error('No active session');
+      return throwError(() => new Error('No active session'));
     }
     return new Observable(observer => {
       this.http.delete(`${this.apiUrl}/vm/session/${sessionId}`)
@@ -138,18 +156,27 @@ export class VmService {
   private statusPollingInterval: any;
 
   private startStatusPolling() {
+    // Initial status fetch
+    this.getSessionStatus().subscribe({
+      next: (status) => this.sessionStatusSubject.next(status),
+      error: (err) => console.error('Status fetch error:', err)
+    });
+
+    // Poll every 5 seconds
     this.statusPollingInterval = setInterval(() => {
       this.getSessionStatus().subscribe({
         next: (status) => this.sessionStatusSubject.next(status),
         error: (err) => console.error('Status polling error:', err)
       });
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
   }
 
   private stopStatusPolling() {
     if (this.statusPollingInterval) {
       clearInterval(this.statusPollingInterval);
+      this.statusPollingInterval = null;
     }
+    this.sessionStatusSubject.next(null);
   }
 
   // Question management

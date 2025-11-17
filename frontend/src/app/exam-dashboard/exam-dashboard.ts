@@ -1,8 +1,8 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { VmService, Question, SessionStatus } from '../services/vm.service';
-import { TerminalService } from '../services/terminal.service';
 import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 
 @Component({
   selector: 'app-exam-dashboard',
@@ -13,7 +13,7 @@ import { CommonModule } from '@angular/common';
 })
 
 export class ExamDashboard implements OnInit, OnDestroy {
-  @ViewChild('terminalContainer', { static: false }) terminalContainer!: ElementRef;
+  @ViewChild('terminalFrame', { static: false }) terminalFrame!: ElementRef;
 
   questions: Question[] = [];
   sessionStatus: SessionStatus | null = null;
@@ -22,19 +22,13 @@ export class ExamDashboard implements OnInit, OnDestroy {
   error: string | null = null;
 
   activeTerminal: string | null = null;
-  terminalConnected = false;
+  terminalUrl: SafeResourceUrl | null = null;
 
   private subscriptions: Subscription[] = [];
 
-  // VM credentials (in production, get from secure storage)
-  private vmCredentials = {
-    username: 'root',
-    password: 'your-password-here'
-  };
-
   constructor(
     public vmService: VmService,
-    private terminalService: TerminalService
+    private sanitizer: DomSanitizer
   ) { }
 
   ngOnInit(): void {
@@ -62,9 +56,6 @@ export class ExamDashboard implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subscriptions.forEach(sub => sub.unsubscribe());
-    if (this.terminalConnected) {
-      this.terminalService.disconnect();
-    }
   }
 
   // Start exam session
@@ -97,6 +88,8 @@ export class ExamDashboard implements OnInit, OnDestroy {
       next: () => {
         this.examStarted = false;
         this.sessionStatus = null;
+        this.activeTerminal = null;
+        this.terminalUrl = null;
         this.loading = false;
         alert('Exam session ended successfully.');
       },
@@ -157,7 +150,7 @@ export class ExamDashboard implements OnInit, OnDestroy {
         this.loading = false;
         // Close terminal if this VM's terminal is open
         if (this.activeTerminal === vmName) {
-          this.disconnectTerminal();
+          this.closeTerminal();
         }
         // Refresh status
         setTimeout(() => this.loadSessionData(), 2000);
@@ -182,70 +175,60 @@ export class ExamDashboard implements OnInit, OnDestroy {
     }
   }
 
+  // Get VM ID
+  getVmId(vmName: string): number | null {
+    if (!this.sessionStatus) return null;
+
+    switch (vmName) {
+      case 'server1': return this.sessionStatus.server1?.vmid || null;
+      case 'server2': return this.sessionStatus.server2?.vmid || null;
+      case 'server3': return this.sessionStatus.server3?.vmid || null;
+      default: return null;
+    }
+  }
+
   // Check if VM is running
   isVmRunning(vmName: string): boolean {
     return this.getVmStatus(vmName) === 'running';
   }
 
-  // Open terminal for VM
-  async openTerminal(vmName: string): Promise<void> {
+  // Open Proxmox noVNC terminal
+  openTerminal(vmName: string): void {
     if (!this.isVmRunning(vmName)) {
       alert('Please start the VM first.');
       return;
     }
 
-    // Only server1 and server2 have terminal access
-    if (vmName !== 'server1' && vmName !== 'server2') {
-      alert('Terminal access not available for this VM.');
+    const vmId = this.getVmId(vmName);
+    if (!vmId) {
+      alert('VM ID not found.');
       return;
     }
 
-    try {
-      // Create terminal in the container
-      this.activeTerminal = vmName;
+    this.loading = true;
+    this.error = null;
 
-      // Wait for view to update
-      setTimeout(async () => {
-        if (this.terminalContainer) {
-          this.terminalService.createTerminal(this.terminalContainer.nativeElement);
-
-          // Get VM IP address (you need to implement this based on your network setup)
-          const vmIp = this.getVmIpAddress(vmName);
-
-          // Connect to VM
-          await this.terminalService.connectToVm(
-            this.vmService.getSessionId()!,
-            vmIp,
-            this.vmCredentials.username,
-            this.vmCredentials.password
-          );
-
-          this.terminalConnected = true;
-        }
-      }, 100);
-    } catch (err) {
-      console.error('Failed to open terminal:', err);
-      this.error = 'Failed to connect to terminal';
-      this.activeTerminal = null;
-    }
+    // Request noVNC console URL from backend
+    this.vmService.getVncConsoleUrl(vmName).subscribe({
+      next: (response) => {
+        // Response should contain the noVNC URL with ticket
+        // Format: https://proxmox:8006/?console=kvm&novnc=1&vmid=XXX&node=YYY&resize=scale&ticket=...
+        this.terminalUrl = this.sanitizer.bypassSecurityTrustResourceUrl(response.url);
+        this.activeTerminal = vmName;
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Failed to get console URL:', err);
+        this.error = 'Failed to open terminal console.';
+        this.loading = false;
+      }
+    });
   }
 
   // Close terminal
-  disconnectTerminal(): void {
-    this.terminalService.disconnect();
+  closeTerminal(): void {
     this.activeTerminal = null;
-    this.terminalConnected = false;
-  }
-
-  // Get VM IP address (implement based on your network setup)
-  private getVmIpAddress(vmName: string): string {
-    // In production, you should get this from the API
-    // For now, return placeholder IPs
-    switch (vmName) {
-      case 'server1': return '192.168.1.101';
-      case 'server2': return '192.168.1.102';
-      default: return '192.168.1.100';
-    }
+    this.terminalUrl = null;
   }
 
   // Get status icon class

@@ -42,7 +42,7 @@
                   (click)="openTerminal(vm)"
                   [disabled]="activeTerminal===vm || loading"
                   class="btn-terminal">
-            Open Terminal
+            {{ activeTerminal === vm ? 'Console Open' : 'Open Console' }}
           </button>
         </div>
       </div>
@@ -55,18 +55,20 @@
     <div class="progress-bar">
       <div class="progress-fill" [style.width.%]="getProgressPercentage()"></div>
     </div>
-
     <div class="questions-list">
       <div class="question-card" *ngFor="let question of questions">
         <div class="question-header" (click)="toggleQuestion(question.id)">
           <span [ngClass]="getStatusIconClass(question.status)" class="status-icon"></span>
           <h3>{{ question.title }}</h3>
           <span class="expand-icon">
-            {{ question.expanded ? '-' : '+' }}
+            {{ question.expanded ? '−' : '+' }}
           </span>
         </div>
         <div class="question-body" *ngIf="question.expanded">
           <p>{{ question.description }}</p>
+          <div class="question-meta">
+            <strong>Required VMs:</strong> {{ question.requiredVMs.join(', ') }}
+          </div>
           <div class="question-actions">
             <button (click)="updateQuestionStatus(question.id, 'pending')"
                     [disabled]="question.status==='pending'" class="btn-secondary">
@@ -86,10 +88,32 @@
     </div>
   </section>
 
-  <!-- Terminal -->
-  <section *ngIf="activeTerminal" class="terminal-section">
-    <h2>Terminal - {{ activeTerminal | titlecase }}</h2>
-    <div #terminalContainer class="terminal-container"></div>
-    <button (click)="disconnectTerminal()" class="btn-danger">Close Terminal</button>
-  </section>
+  <!-- Terminal Console (noVNC iframe) -->
+  <div *ngIf="activeTerminal" class="terminal-overlay">
+    <div class="terminal-modal">
+      <div class="terminal-header">
+        <h3>
+          <span class="terminal-icon">🖥️</span>
+          Console: {{ activeTerminal | titlecase }}
+        </h3>
+        <button (click)="closeTerminal()" class="btn-close" title="Close Console">
+          ✕
+        </button>
+      </div>
+      <div class="terminal-body">
+        <iframe
+          #terminalFrame
+          *ngIf="terminalUrl"
+          [src]="terminalUrl"
+          class="terminal-frame"
+          frameborder="0"
+          allowfullscreen>
+        </iframe>
+        <div *ngIf="!terminalUrl && loading" class="terminal-loading">
+          <div class="spinner"></div>
+          <p>Connecting to console...</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
