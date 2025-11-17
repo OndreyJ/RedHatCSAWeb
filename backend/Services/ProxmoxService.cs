@@ -232,18 +232,47 @@ namespace RHCSAExam.Services
                 var response = await _httpClient.PostAsync(url, content);
                 var body = await response.Content.ReadAsStringAsync();
 
-                _logger.LogDebug("VNC ticket response: {Status} - {Body}", response.StatusCode, body);
+                _logger.LogInformation("VNC ticket response status: {Status}", response.StatusCode);
+                _logger.LogInformation("VNC ticket response body: {Body}", body);
 
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Failed to get VNC ticket. Status: {Status}, Body: {Body}", response.StatusCode, body);
+                    throw new HttpRequestException($"Proxmox API returned {response.StatusCode}: {body}");
+                }
 
-                var result = JsonSerializer.Deserialize<ProxmoxApiResponse<VncTicketData>>(body);
+                if (string.IsNullOrWhiteSpace(body))
+                {
+                    _logger.LogError("Empty response body from Proxmox VNC ticket endpoint");
+                    throw new InvalidOperationException("Empty response from Proxmox API");
+                }
+
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+
+                var result = JsonSerializer.Deserialize<ProxmoxApiResponse<VncTicketData>>(body, options);
+
+                if (result == null || result.Data == null)
+                {
+                    _logger.LogError("Failed to deserialize VNC ticket response. Body: {Body}", body);
+                    throw new InvalidOperationException("Invalid response format from Proxmox API");
+                }
+
+                _logger.LogInformation("VNC ticket obtained successfully - Port: {Port}", result.Data.Port);
 
                 return new VncTicket
                 {
-                    Ticket = result.Data.Ticket,
+                    Ticket = result.Data.Ticket ?? throw new InvalidOperationException("Ticket is null"),
                     Port = result.Data.Port,
-                    Upid = result.Data.Upid
+                    Upid = result.Data.Upid ?? ""
                 };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "JSON parsing error for VNC ticket. Response may not be valid JSON.");
+                throw;
             }
             catch (Exception ex)
             {
@@ -401,8 +430,13 @@ namespace RHCSAExam.Services
 
     public class VncTicketData
     {
+        [JsonPropertyName("ticket")]
         public string Ticket { get; set; }
+
+        [JsonPropertyName("port")]
         public int Port { get; set; }
+
+        [JsonPropertyName("upid")]
         public string Upid { get; set; }
     }
 
