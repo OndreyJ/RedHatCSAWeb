@@ -531,3 +531,4 @@ $RECYCLE.BIN/
 
 .angular/
 .dist/
+appsettings.Development.json

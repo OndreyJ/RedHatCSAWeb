@@ -2,41 +2,95 @@ using RHCSAExam.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Error logging
+// Configuration is automatically loaded from:
+// 1. appsettings.json
+// 2. appsettings.{Environment}.json (e.g., appsettings.Development.json)
+// 3. Environment variables
+
+// Configure logging
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Debug);
+builder.Logging.AddDebug();
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.SetMinimumLevel(LogLevel.Debug);
+}
+else
+{
+    builder.Logging.SetMinimumLevel(LogLevel.Information);
+}
 
 // Add services to the container
 builder.Services.AddControllers();
 
-// Register ProxmoxService with DI
-builder.Services.AddSingleton<ProxmoxService>(sp =>
-{
-    var config = sp.GetRequiredService<IConfiguration>();
-    return new ProxmoxService(config);
-});
+// Register ProxmoxService with appropriate lifetime
+builder.Services.AddSingleton<ProxmoxService>();
 
+// Configure CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAllOrigins", builder =>
+    options.AddPolicy("AllowAllOrigins", policy =>
     {
-        builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
+        if (builder.Environment.IsDevelopment())
+        {
+            // Development: Allow all
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // Production: Restrict to specific origins
+            var allowedOrigins = builder.Configuration
+                .GetSection("Cors:AllowedOrigins")
+                .Get<string[]>() ?? Array.Empty<string>();
+
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
+        }
     });
 });
 
+// Add health checks (optional but recommended)
+builder.Services.AddHealthChecks();
+
 var app = builder.Build();
 
-// CRITICAL: Routing must come BEFORE CORS
+// Configure middleware pipeline
+// Order matters: Exception handling -> HTTPS -> Routing -> CORS -> Auth -> Endpoints
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler("/error");
+    app.UseHsts();
+}
+
+// Don't use HTTPS redirection in Docker/containerized environments
+// Configure HTTPS at the reverse proxy/load balancer level instead
+
+// CORS must come after UseRouting and before UseAuthorization
 app.UseRouting();
 app.UseCors("AllowAllOrigins");
 
-// Authorization middleware
+app.UseAuthentication(); // Add if using authentication
 app.UseAuthorization();
 
-// Map controllers
+// Map endpoints
 app.MapControllers();
+app.MapHealthChecks("/health");
+
+// Graceful shutdown
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+lifetime.ApplicationStopping.Register(() =>
+{
+    app.Logger.LogInformation("Application is shutting down...");
+});
 
 app.Run();
