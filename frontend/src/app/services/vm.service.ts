@@ -41,6 +41,10 @@ export interface VncConsoleResponse {
   csrfToken?: string;
 }
 
+export interface basicConsoleResponse {
+  url: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -118,6 +122,18 @@ export class VmService {
       return throwError(() => new Error('No active session'));
     }
     return this.http.get<SessionStatus>(`${this.apiUrl}/vm/session/${sessionId}/status`);
+  }
+
+  // get basic url that will open a console in a new tab
+  getBasicUrl(vmName: string): Observable<basicConsoleResponse> {
+    const sessionId = this.getSessionId();
+    if (!sessionId) {
+      return throwError(() => new Error('No active session'));
+    }
+    return this.http.post<basicConsoleResponse>(
+      `${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/url`,
+      {},
+    );
   }
 
   // Get noVNC console URL for VM (cookie-based authentication)

@@ -313,6 +313,46 @@ namespace RHCSAExam.Controllers
             }
         }
 
+        // Get basic url
+        [HttpPost("session/{sessionId}/vm/{vmName}/url")]
+        public async Task<ActionResult> GetVmUrl(string sessionId, string vmName)
+        {
+            _logger.LogInformation("GetVmConsole called - SessionId: {SessionId}, VmName: {VmName}", sessionId, vmName);
+
+            if (!_userSessions.TryGetValue(sessionId, out var session))
+            {
+                _logger.LogWarning("Session not found: {SessionId}", sessionId);
+                return NotFound(new { message = "Session not found" });
+            }
+
+            var vmId = GetVmIdByName(session, vmName);
+            if (vmId == 0)
+            {
+                _logger.LogWarning("Invalid VM name: {VmName}", vmName);
+                return BadRequest(new { message = $"Invalid VM name: {vmName}" });
+            }
+
+            _logger.LogInformation("Getting console URL for VM {VmId}...", vmId);
+
+            try
+            {
+                // Get VNC console info (URL, port, ticket, cookie)
+                var consoleInfo = await _proxmoxService.GetBasicConsoleUrl(vmId);
+
+                _logger.LogInformation("Console URL generated for VM {VmId}: {Url}", vmId, consoleInfo.Url);
+
+                return Ok(new
+                {
+                    url = consoleInfo.Url
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get console URL for VM {VmId}", vmId);
+                return StatusCode(500, new { message = $"Failed to get console URL: {ex.Message}" });
+            }
+        }
+
         // End exam session - cleanup VMs
         [HttpDelete("session/{sessionId}")]
         public async Task<ActionResult> EndSession(string sessionId)

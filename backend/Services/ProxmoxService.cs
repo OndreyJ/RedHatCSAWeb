@@ -109,11 +109,11 @@ namespace RHCSAExam.Services
                     _csrfToken = result.Data.CSRFPreventionToken;
 
                     _logger.LogInformation("Authentication successful - Ticket and CSRF token obtained");
-                    
+
                     // Manually add cookie to container
                     var uri = new Uri(_proxmoxHost);
                     _cookieContainer.Add(uri, new Cookie("PVEAuthCookie", _authTicket));
-                    
+
                     return true;
                 }
 
@@ -330,6 +330,23 @@ namespace RHCSAExam.Services
             };
         }
 
+        // Get basic url
+        public async Task<BasicUrl> GetBasicConsoleUrl(int vmId)
+        {
+            _logger.LogInformation("Getting basic console info:", vmId);
+
+            // Build the noVNC URL - the cookie will be sent automatically by the browser
+            var consoleUrl = $"{_proxmoxHost}/?console=kvm&novnc=1&node={_node}&vmid={vmId}";
+
+            _logger.LogInformation("Console URL generated: {Url}", consoleUrl);
+            _logger.LogInformation("Auth ticket available: {HasTicket}", !string.IsNullOrEmpty(_authTicket));
+
+            return new BasicUrl
+            {
+                Url = consoleUrl,
+            };
+        }
+
         // Helper to get next available VM ID
         private async Task<int> GetNextVmId()
         {
@@ -454,6 +471,11 @@ namespace RHCSAExam.Services
         public int Port { get; set; }
         public string Ticket { get; set; }
         public string? CSRFToken { get; set; }
+    }
+
+    public class BasicUrl
+    {
+        public string Url { get; set; }
     }
 
     public class VmInfoData

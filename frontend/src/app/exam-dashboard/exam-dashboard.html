@@ -38,11 +38,11 @@
           <button (click)="stopVm(vm)" [disabled]="!isVmRunning(vm) || loading" class="btn-stop">
             Stop
           </button>
-          <button *ngIf="isVmRunning(vm) && (vm==='server1' || vm==='server2')"
+          <button *ngIf="isVmRunning(vm)"
                   (click)="openTerminal(vm)"
-                  [disabled]="activeTerminal===vm || loading"
+                  [disabled]="loading"
                   class="btn-terminal">
-            {{ activeTerminal === vm ? 'Console Open' : 'Open Console' }}
+            Open Console
           </button>
         </div>
       </div>
@@ -87,33 +87,4 @@
       </div>
     </div>
   </section>
-
-  <!-- Terminal Console (noVNC iframe) -->
-  <div *ngIf="activeTerminal" class="terminal-overlay">
-    <div class="terminal-modal">
-      <div class="terminal-header">
-        <h3>
-          <span class="terminal-icon">🖥️</span>
-          Console: {{ activeTerminal | titlecase }}
-        </h3>
-        <button (click)="closeTerminal()" class="btn-close" title="Close Console">
-          ✕
-        </button>
-      </div>
-      <div class="terminal-body">
-        <iframe
-          #terminalFrame
-          *ngIf="terminalUrl"
-          [src]="terminalUrl"
-          class="terminal-frame"
-          frameborder="0"
-          allowfullscreen>
-        </iframe>
-        <div *ngIf="!terminalUrl && loading" class="terminal-loading">
-          <div class="spinner"></div>
-          <p>Connecting to console...</p>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
