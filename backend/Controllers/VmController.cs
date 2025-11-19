@@ -270,7 +270,7 @@ namespace RHCSAExam.Controllers
             });
         }
 
-        // Get noVNC console URL for VM - NEW METHOD
+        // Get noVNC console URL for VM - Cookie-based authentication
         [HttpPost("session/{sessionId}/vm/{vmName}/console")]
         public async Task<ActionResult> GetVmConsole(string sessionId, string vmName)
         {
@@ -293,19 +293,17 @@ namespace RHCSAExam.Controllers
 
             try
             {
-                // Get VNC ticket from Proxmox
-                var ticket = await _proxmoxService.GetVncTicket(vmId);
-                
-                // Build the full noVNC console URL
-                var consoleUrl = _proxmoxService.BuildNoVncConsoleUrl(vmId, ticket);
-                
-                _logger.LogInformation("Console URL generated for VM {VmId}", vmId);
+                // Get VNC console info (URL, port, ticket, cookie)
+                var consoleInfo = await _proxmoxService.GetVncConsoleUrl(vmId);
+
+                _logger.LogInformation("Console URL generated for VM {VmId}: {Url}", vmId, consoleInfo.Url);
 
                 return Ok(new
                 {
-                    url = consoleUrl,
-                    ticket = ticket.Ticket,
-                    port = ticket.Port
+                    url = consoleInfo.Url,
+                    port = consoleInfo.Port,
+                    ticket = consoleInfo.Ticket,
+                    pveAuthCookie = consoleInfo.PveAuthCookie
                 });
             }
             catch (Exception ex)
@@ -313,29 +311,6 @@ namespace RHCSAExam.Controllers
                 _logger.LogError(ex, "Failed to get console URL for VM {VmId}", vmId);
                 return StatusCode(500, new { message = $"Failed to get console URL: {ex.Message}" });
             }
-        }
-
-        // DEPRECATED - kept for backward compatibility
-        [HttpGet("session/{sessionId}/vm/{vmName}/console")]
-        public async Task<ActionResult<VncTicket>> GetConsoleTicket(string sessionId, string vmName)
-        {
-            _logger.LogInformation("GetConsoleTicket called (deprecated) - SessionId: {SessionId}, VmName: {VmName}", sessionId, vmName);
-
-            if (!_userSessions.TryGetValue(sessionId, out var session))
-            {
-                _logger.LogWarning("Session not found: {SessionId}", sessionId);
-                return NotFound("Session not found");
-            }
-
-            var vmId = GetVmIdByName(session, vmName);
-            if (vmId == 0)
-            {
-                _logger.LogWarning("Invalid VM name: {VmName}", vmName);
-                return BadRequest("Invalid VM name");
-            }
-
-            var ticket = await _proxmoxService.GetVncTicket(vmId);
-            return Ok(ticket);
         }
 
         // End exam session - cleanup VMs
@@ -413,30 +388,6 @@ namespace RHCSAExam.Controllers
 
             return Ok(new { cleanedSessions = oldSessions.Count });
         }
-
-        [HttpPost("novnc")]
-        public async Task<IActionResult> GetNoVncUrl([FromQuery] int vmId)
-        {
-            try
-            {
-                var wsUrl = await _proxmoxService.GetVncWebsocketUrl(vmId);
-
-                return Ok(new
-                {
-                    vmId = vmId,
-                    websocketUrl = wsUrl
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    error = "Failed to get noVNC URL",
-                    message = ex.Message
-                });
-            }
-        }
-
 
         private int GetVmIdByName(UserVmSession session, string vmName)
         {

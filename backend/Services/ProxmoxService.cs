@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Net;
 
 namespace RHCSAExam.Services
 {
@@ -11,6 +12,7 @@ namespace RHCSAExam.Services
         private readonly string _apiToken;
         private readonly string _node;
         private readonly ILogger<ProxmoxService> _logger;
+        private readonly CookieContainer _cookieContainer;
 
         public ProxmoxService(IConfiguration configuration, ILogger<ProxmoxService> logger)
         {
@@ -30,10 +32,15 @@ namespace RHCSAExam.Services
                 throw new InvalidOperationException("Proxmox configuration is incomplete");
             }
 
+            // Create cookie container for auth cookies
+            _cookieContainer = new CookieContainer();
+
             // Accept self-signed certificates (for dev only!)
             var handler = new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true,
+                CookieContainer = _cookieContainer,
+                UseCookies = true
             };
 
             _httpClient = new HttpClient(handler);
@@ -59,7 +66,7 @@ namespace RHCSAExam.Services
             {
                 newid = newVmId,
                 name = newVmName,
-                full = 0, // Full clone
+                full = 0,
                 target = _node
             };
 
@@ -165,7 +172,6 @@ namespace RHCSAExam.Services
 
                 _logger.LogDebug("VM status response: {Body}", responseBody);
 
-                // Parse JSON manually to handle missing fields
                 using var doc = JsonDocument.Parse(responseBody);
                 var data = doc.RootElement.GetProperty("data");
 
@@ -217,13 +223,13 @@ namespace RHCSAExam.Services
             }
         }
 
-        // Get VNC WebSocket ticket for terminal access
-        public async Task<VncTicket> GetVncTicket(int vmId)
+        // Get VNC console URL using cookie-based authentication
+        public async Task<VncConsoleInfo> GetVncConsoleUrl(int vmId)
         {
-            _logger.LogInformation("Getting VNC ticket for VM {VmId}", vmId);
+            _logger.LogInformation("Getting VNC console info for VM {VmId} using cookie authentication", vmId);
 
+            // Step 1: Get VNC proxy info (port and ticket)
             var url = $"{_proxmoxHost}/api2/json/nodes/{_node}/qemu/{vmId}/vncproxy";
-
             var payload = new { websocket = 1 };
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
@@ -232,76 +238,74 @@ namespace RHCSAExam.Services
                 var response = await _httpClient.PostAsync(url, content);
                 var body = await response.Content.ReadAsStringAsync();
 
-                _logger.LogInformation("VNC ticket response status: {Status}", response.StatusCode);
-                _logger.LogInformation("VNC ticket response body: {Body}", body);
+                _logger.LogInformation("VNC proxy response status: {Status}", response.StatusCode);
+                _logger.LogDebug("VNC proxy response body: {Body}", body);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Failed to get VNC ticket. Status: {Status}, Body: {Body}", response.StatusCode, body);
+                    _logger.LogError("Failed to get VNC proxy. Status: {Status}, Body: {Body}", response.StatusCode, body);
                     throw new HttpRequestException($"Proxmox API returned {response.StatusCode}: {body}");
                 }
 
-                if (string.IsNullOrWhiteSpace(body))
-                {
-                    _logger.LogError("Empty response body from Proxmox VNC ticket endpoint");
-                    throw new InvalidOperationException("Empty response from Proxmox API");
-                }
-
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                };
-
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var result = JsonSerializer.Deserialize<ProxmoxApiResponse<VncTicketData>>(body, options);
 
                 if (result == null || result.Data == null)
                 {
-                    _logger.LogError("Failed to deserialize VNC ticket response. Body: {Body}", body);
+                    _logger.LogError("Failed to deserialize VNC proxy response. Body: {Body}", body);
                     throw new InvalidOperationException("Invalid response format from Proxmox API");
                 }
 
-                // Use the Port property which handles the conversion
                 var port = result.Data.Port;
-                _logger.LogInformation("VNC ticket obtained successfully - Port: {Port}", port);
+                var ticket = result.Data.Ticket ?? throw new InvalidOperationException("Ticket is null");
 
-                return new VncTicket
+                _logger.LogInformation("VNC proxy info obtained - Port: {Port}", port);
+
+                // Step 2: Build the noVNC URL using cookie authentication
+                // The cookie should be set automatically by the HttpClient's CookieContainer
+                var consoleUrl = $"{_proxmoxHost}/?console=kvm&novnc=1&node={_node}&vmid={vmId}";
+
+                return new VncConsoleInfo
                 {
-                    Ticket = result.Data.Ticket ?? throw new InvalidOperationException("Ticket is null"),
+                    Url = consoleUrl,
                     Port = port,
-                    Upid = result.Data.Upid ?? ""
+                    Ticket = ticket,
+                    // Extract auth cookie if needed
+                    PveAuthCookie = GetAuthCookie()
                 };
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError(ex, "JSON parsing error for VNC ticket. Response may not be valid JSON.");
-                throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to obtain VNC ticket for VM {VmId}", vmId);
+                _logger.LogError(ex, "Failed to get VNC console URL for VM {VmId}", vmId);
                 throw;
             }
         }
 
-        // Build complete noVNC console URL - NEW METHOD
-        public string BuildNoVncConsoleUrl(int vmId, VncTicket ticket)
+        // Get authentication cookie from cookie container
+        private string? GetAuthCookie()
         {
-            _logger.LogInformation("Building noVNC console URL for VM {VmId}", vmId);
+            try
+            {
+                var uri = new Uri(_proxmoxHost);
+                var cookies = _cookieContainer.GetCookies(uri);
 
-            // Encode the ticket for URL safety
-            var encodedTicket = Uri.EscapeDataString(ticket.Ticket);
+                foreach (Cookie cookie in cookies)
+                {
+                    if (cookie.Name == "PVEAuthCookie")
+                    {
+                        _logger.LogDebug("Found PVEAuthCookie: {Cookie}", cookie.Value);
+                        return cookie.Value;
+                    }
+                }
 
-            // Build the complete noVNC URL that can be embedded in an iframe
-            // This URL points to Proxmox's built-in noVNC viewer
-            var consoleUrl =
-                $"{_proxmoxHost}/?console=kvm&novnc=1&node={_node}" +
-                $"&vmid={vmId}" +
-                $"&path=api2/json/nodes/{_node}/qemu/{vmId}/vncwebsocket" +
-                $"?port={ticket.Port}&vncticket={encodedTicket}";
-
-            _logger.LogInformation("Generated console URL: {Url}", consoleUrl);
-
-            return consoleUrl;
+                _logger.LogWarning("PVEAuthCookie not found in cookie container");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving auth cookie");
+                return null;
+            }
         }
 
         // Helper to get next available VM ID
@@ -333,7 +337,6 @@ namespace RHCSAExam.Services
                     throw new InvalidOperationException("Proxmox returned empty response");
                 }
 
-                // Proxmox sometimes returns the ID as a string instead of int
                 var jsonDoc = JsonDocument.Parse(responseBody);
                 var dataElement = jsonDoc.RootElement.GetProperty("data");
 
@@ -392,24 +395,6 @@ namespace RHCSAExam.Services
                 _logger.LogError(ex, "Failed to list VMs");
                 throw;
             }
-        }
-
-        public async Task<string> GetVncWebsocketUrl(int vmId)
-        {
-            _logger.LogInformation("Building noVNC WebSocket URL for VM {VmId}", vmId);
-
-            var ticketInfo = await GetVncTicket(vmId);
-
-            // Encode ticket for URL
-            var encodedTicket = Uri.EscapeDataString(ticketInfo.Ticket);
-
-            // Final websocket URL that noVNC connects to
-            var wsUrl =
-                $"{_proxmoxHost.Replace("https", "wss")}/api2/json/nodes/{_node}/qemu/{vmId}/vncwebsocket?port={ticketInfo.Port}&vncticket={encodedTicket}";
-
-            _logger.LogInformation("Generated noVNC WebSocket URL: {Url}", wsUrl);
-
-            return wsUrl;
         }
     }
 
@@ -479,11 +464,12 @@ namespace RHCSAExam.Services
         public string Upid { get; set; }
     }
 
-    public class VncTicket
+    public class VncConsoleInfo
     {
-        public string Ticket { get; set; }
+        public string Url { get; set; }
         public int Port { get; set; }
-        public string Upid { get; set; }
+        public string Ticket { get; set; }
+        public string? PveAuthCookie { get; set; }
     }
 
     public class VmInfoData

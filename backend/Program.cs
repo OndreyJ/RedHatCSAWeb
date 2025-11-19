@@ -28,21 +28,26 @@ builder.Services.AddControllers();
 // Register ProxmoxService with appropriate lifetime
 builder.Services.AddSingleton<ProxmoxService>();
 
-// Configure CORS
+// Configure CORS with credentials support (required for cookie-based auth)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAllOrigins", policy =>
     {
         if (builder.Environment.IsDevelopment())
         {
-            // Development: Allow all
-            policy.AllowAnyOrigin()
+            // Development: Allow localhost with credentials
+            policy.WithOrigins(
+                    "http://localhost:4200",
+                    "http://localhost:5051",
+                    "http://localhost:8080"
+                  )
                   .AllowAnyMethod()
-                  .AllowAnyHeader();
+                  .AllowAnyHeader()
+                  .AllowCredentials(); // Required for cookies
         }
         else
         {
-            // Production: Restrict to specific origins
+            // Production: Restrict to specific origins with credentials
             var allowedOrigins = builder.Configuration
                 .GetSection("Cors:AllowedOrigins")
                 .Get<string[]>() ?? Array.Empty<string>();
@@ -50,7 +55,7 @@ builder.Services.AddCors(options =>
             policy.WithOrigins(allowedOrigins)
                   .AllowAnyMethod()
                   .AllowAnyHeader()
-                  .AllowCredentials();
+                  .AllowCredentials(); // Required for cookies
         }
     });
 });

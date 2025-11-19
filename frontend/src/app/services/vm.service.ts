@@ -36,8 +36,9 @@ export interface Question {
 
 export interface VncConsoleResponse {
   url: string;
-  ticket: string;
   port: number;
+  ticket: string;
+  pveAuthCookie?: string;
 }
 
 @Injectable({
@@ -119,7 +120,7 @@ export class VmService {
     return this.http.get<SessionStatus>(`${this.apiUrl}/vm/session/${sessionId}/status`);
   }
 
-  // Get noVNC console URL for VM
+  // Get noVNC console URL for VM (cookie-based authentication)
   getVncConsoleUrl(vmName: string): Observable<VncConsoleResponse> {
     const sessionId = this.getSessionId();
     if (!sessionId) {
@@ -127,10 +128,10 @@ export class VmService {
     }
     return this.http.post<VncConsoleResponse>(
       `${this.apiUrl}/vm/session/${sessionId}/vm/${vmName}/console`,
-      {}
+      {},
+      { withCredentials: true } // Important: include credentials for cookies
     );
   }
-
 
   // End exam session
   endSession(): Observable<any> {
