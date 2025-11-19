@@ -293,7 +293,11 @@ namespace RHCSAExam.Services
 
             // Build the complete noVNC URL that can be embedded in an iframe
             // This URL points to Proxmox's built-in noVNC viewer
-            var consoleUrl = $"{_proxmoxHost}/?console=kvm&novnc=1&vmid={vmId}&node={_node}&cmd=&vncticket={encodedTicket}";
+            var consoleUrl =
+                $"{_proxmoxHost}/?console=kvm&novnc=1&node={_node}" +
+                $"&vmid={vmId}" +
+                $"&path=api2/json/nodes/{_node}/qemu/{vmId}/vncwebsocket" +
+                $"?port={ticket.Port}&vncticket={encodedTicket}";
 
             _logger.LogInformation("Generated console URL: {Url}", consoleUrl);
 
