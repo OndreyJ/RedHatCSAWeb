@@ -7,7 +7,6 @@ export interface ExamSession {
   sessionId: string;
   server1VmId: number;
   server2VmId: number;
-  server3VmId: number;
   message: string;
 }
 
@@ -22,7 +21,6 @@ export interface SessionStatus {
   sessionId: string;
   server1: VmStatus;
   server2: VmStatus;
-  server3: VmStatus;
 }
 
 export interface Question {

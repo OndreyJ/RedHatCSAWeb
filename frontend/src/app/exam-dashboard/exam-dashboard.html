@@ -24,7 +24,7 @@
   <section *ngIf="examStarted && sessionStatus" class="vms-section">
     <h2>Virtual Machines</h2>
     <div class="vm-cards">
-      <div class="vm-card" *ngFor="let vm of ['server1','server2','server3']">
+      <div class="vm-card" *ngFor="let vm of ['server1','server2']">
         <div class="vm-header">
           <h3>{{ vm | titlecase }}</h3>
           <span class="vm-status" [ngClass]="getVmStatus(vm)">

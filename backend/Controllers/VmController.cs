@@ -34,7 +34,7 @@ namespace RHCSAExam.Controllers
             });
         }
 
-        // Initialize exam environment - creates 3 VMs from templates
+        // Initialize exam environment - creates 2 VMs from templates
         [HttpPost("session/start")]
         public async Task<ActionResult<ExamSession>> StartExamSession([FromBody] StartSessionRequest request)
         {
@@ -51,27 +51,24 @@ namespace RHCSAExam.Controllers
 
                 var template1Config = _configuration["Proxmox:Templates:Server1"];
                 var template2Config = _configuration["Proxmox:Templates:Server2"];
-                var template3Config = _configuration["Proxmox:Templates:Server3"];
 
                 _logger.LogInformation("Template1 Config Value: {Template1}", template1Config ?? "NULL");
                 _logger.LogInformation("Template2 Config Value: {Template2}", template2Config ?? "NULL");
-                _logger.LogInformation("Template3 Config Value: {Template3}", template3Config ?? "NULL");
 
-                if (string.IsNullOrEmpty(template1Config) || string.IsNullOrEmpty(template2Config) || string.IsNullOrEmpty(template3Config))
+                if (string.IsNullOrEmpty(template1Config) || string.IsNullOrEmpty(template2Config))
                 {
                     _logger.LogError("One or more template IDs are missing from configuration!");
                     return StatusCode(500, new { error = "Template configuration is missing. Check appsettings or environment variables." });
                 }
 
-                int template1Id, template2Id, template3Id;
+                int template1Id, template2Id;
 
                 try
                 {
                     template1Id = int.Parse(template1Config);
                     template2Id = int.Parse(template2Config);
-                    template3Id = int.Parse(template3Config);
-                    _logger.LogInformation("Parsed Template IDs - Server1: {T1}, Server2: {T2}, Server3: {T3}",
-                        template1Id, template2Id, template3Id);
+                    _logger.LogInformation("Parsed Template IDs - Server1: {T1}, Server2: {T2}",
+                        template1Id, template2Id);
                 }
                 catch (Exception ex)
                 {
@@ -96,13 +93,6 @@ namespace RHCSAExam.Controllers
                 );
                 _logger.LogInformation("VM2 cloned successfully with ID: {VmId}", vm2Id);
 
-                _logger.LogInformation("Cloning VM3 from template {TemplateId}...", template3Id);
-                var vm3Id = await _proxmoxService.CloneVmFromTemplate(
-                    template3Id,
-                    $"exam-{sessionId}-server3"
-                );
-                _logger.LogInformation("VM3 cloned successfully with ID: {VmId}", vm3Id);
-
                 // Store session
                 _logger.LogInformation("Creating session object...");
                 var session = new UserVmSession
@@ -111,7 +101,6 @@ namespace RHCSAExam.Controllers
                     UserId = request.UserId,
                     Vm1Id = vm1Id,
                     Vm2Id = vm2Id,
-                    Vm3Id = vm3Id,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -123,7 +112,6 @@ namespace RHCSAExam.Controllers
                     SessionId = sessionId,
                     Server1VmId = vm1Id,
                     Server2VmId = vm2Id,
-                    Server3VmId = vm3Id,
                     Message = "Exam environment created successfully"
                 };
 
@@ -259,14 +247,12 @@ namespace RHCSAExam.Controllers
 
             var vm1Status = await _proxmoxService.GetVmStatus(session.Vm1Id);
             var vm2Status = await _proxmoxService.GetVmStatus(session.Vm2Id);
-            var vm3Status = await _proxmoxService.GetVmStatus(session.Vm3Id);
 
             return Ok(new SessionStatus
             {
                 SessionId = sessionId,
                 Server1 = vm1Status ?? new VmStatus { VmId = session.Vm1Id, Status = "unknown", Name = "server1", Uptime = 0 },
                 Server2 = vm2Status ?? new VmStatus { VmId = session.Vm2Id, Status = "unknown", Name = "server2", Uptime = 0 },
-                Server3 = vm3Status ?? new VmStatus { VmId = session.Vm3Id, Status = "unknown", Name = "server3", Uptime = 0 }
             });
         }
 
@@ -376,8 +362,6 @@ namespace RHCSAExam.Controllers
                 await _proxmoxService.DeleteVm(session.Vm2Id);
                 _logger.LogInformation("Deleted VM2: {VmId}", session.Vm2Id);
 
-                await _proxmoxService.DeleteVm(session.Vm3Id);
-                _logger.LogInformation("Deleted VM3: {VmId}", session.Vm3Id);
 
                 // Remove session
                 _userSessions.TryRemove(sessionId, out _);
@@ -415,7 +399,6 @@ namespace RHCSAExam.Controllers
                         _logger.LogInformation("Cleaning up session {SessionId}...", sessionId);
                         await _proxmoxService.DeleteVm(session.Vm1Id);
                         await _proxmoxService.DeleteVm(session.Vm2Id);
-                        await _proxmoxService.DeleteVm(session.Vm3Id);
                         _userSessions.TryRemove(sessionId, out _);
                         _logger.LogInformation("Session {SessionId} cleaned up successfully", sessionId);
                     }
@@ -435,7 +418,6 @@ namespace RHCSAExam.Controllers
             {
                 "server1" => session.Vm1Id,
                 "server2" => session.Vm2Id,
-                "server3" => session.Vm3Id,
                 _ => 0
             };
         }
@@ -452,7 +434,6 @@ namespace RHCSAExam.Controllers
         public string SessionId { get; set; }
         public int Server1VmId { get; set; }
         public int Server2VmId { get; set; }
-        public int Server3VmId { get; set; }
         public string Message { get; set; }
     }
 
@@ -461,7 +442,6 @@ namespace RHCSAExam.Controllers
         public string SessionId { get; set; }
         public VmStatus Server1 { get; set; }
         public VmStatus Server2 { get; set; }
-        public VmStatus Server3 { get; set; }
     }
 
     public class UserVmSession
@@ -470,7 +450,6 @@ namespace RHCSAExam.Controllers
         public string UserId { get; set; }
         public int Vm1Id { get; set; }
         public int Vm2Id { get; set; }
-        public int Vm3Id { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

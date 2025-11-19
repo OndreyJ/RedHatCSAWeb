@@ -181,7 +181,6 @@ export class ExamDashboard implements OnInit, OnDestroy {
     switch (vmName) {
       case 'server1': return this.sessionStatus.server1?.status || 'unknown';
       case 'server2': return this.sessionStatus.server2?.status || 'unknown';
-      case 'server3': return this.sessionStatus.server3?.status || 'unknown';
       default: return 'unknown';
     }
   }
