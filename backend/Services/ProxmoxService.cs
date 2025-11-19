@@ -260,12 +260,14 @@ namespace RHCSAExam.Services
                     throw new InvalidOperationException("Invalid response format from Proxmox API");
                 }
 
-                _logger.LogInformation("VNC ticket obtained successfully - Port: {Port}", result.Data.Port);
+                // Use the Port property which handles the conversion
+                var port = result.Data.Port;
+                _logger.LogInformation("VNC ticket obtained successfully - Port: {Port}", port);
 
                 return new VncTicket
                 {
                     Ticket = result.Data.Ticket ?? throw new InvalidOperationException("Ticket is null"),
-                    Port = result.Data.Port,
+                    Port = port,
                     Upid = result.Data.Upid ?? ""
                 };
             }
@@ -431,7 +433,45 @@ namespace RHCSAExam.Services
     public class VncTicketData
     {
         public string Ticket { get; set; }
-        public int Port { get; set; }
+
+        private object _port;
+
+        [System.Text.Json.Serialization.JsonPropertyName("port")]
+        public object PortRaw
+        {
+            get => _port;
+            set => _port = value;
+        }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public int Port
+        {
+            get
+            {
+                if (_port == null) return 0;
+
+                if (_port is int intPort)
+                    return intPort;
+
+                if (_port is string strPort && int.TryParse(strPort, out int parsedPort))
+                    return parsedPort;
+
+                if (_port is System.Text.Json.JsonElement jsonElement)
+                {
+                    if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        return jsonElement.GetInt32();
+                    if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var str = jsonElement.GetString();
+                        if (int.TryParse(str, out int parsed))
+                            return parsed;
+                    }
+                }
+
+                return 0;
+            }
+        }
+
         public string Upid { get; set; }
     }
 
