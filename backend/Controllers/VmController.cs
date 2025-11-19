@@ -303,7 +303,7 @@ namespace RHCSAExam.Controllers
                     url = consoleInfo.Url,
                     port = consoleInfo.Port,
                     ticket = consoleInfo.Ticket,
-                    pveAuthCookie = consoleInfo.PveAuthCookie
+                    csrfToken = consoleInfo.CSRFToken
                 });
             }
             catch (Exception ex)

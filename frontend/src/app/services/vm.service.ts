@@ -38,7 +38,7 @@ export interface VncConsoleResponse {
   url: string;
   port: number;
   ticket: string;
-  pveAuthCookie?: string;
+  csrfToken?: string;
 }
 
 @Injectable({

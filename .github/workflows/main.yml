@@ -60,6 +60,8 @@ jobs:
             -e "PROXMOX__HOST=${{ secrets.PROXMOX__HOST }}" \
             -e "PROXMOX__NODE=${{ secrets.PROXMOX__NODE }}" \
             -e "PROXMOX__APITOKEN=${{ secrets.PROXMOX__APITOKEN }}" \
+            -e "PROXMOX__USERNAME=${{ secrets.PROXMOX__USERNAME }}" \
+            -e "PROXMOX__PASSWORD=${{ secrets.PROXMOX__PASSWORD }}" \
             redhatcsaweb-backend
 
           # Run frontend

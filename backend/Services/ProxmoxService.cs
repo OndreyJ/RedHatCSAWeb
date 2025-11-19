@@ -8,25 +8,33 @@ namespace RHCSAExam.Services
     public class ProxmoxService
     {
         private readonly HttpClient _httpClient;
+        private readonly HttpClient _authHttpClient; // Separate client for username/password auth
         private readonly string _proxmoxHost;
         private readonly string _apiToken;
+        private readonly string _username;
+        private readonly string _password;
         private readonly string _node;
         private readonly ILogger<ProxmoxService> _logger;
         private readonly CookieContainer _cookieContainer;
+        private string? _csrfToken;
+        private string? _authTicket;
 
         public ProxmoxService(IConfiguration configuration, ILogger<ProxmoxService> logger)
         {
             _logger = logger;
             _proxmoxHost = configuration["Proxmox:Host"];
             _apiToken = configuration["Proxmox:ApiToken"];
+            _username = configuration["Proxmox:Username"]; // e.g., "root@pam"
+            _password = configuration["Proxmox:Password"];
             _node = configuration["Proxmox:Node"];
 
             _logger.LogInformation("=== Initializing ProxmoxService ===");
             _logger.LogInformation("Host: {Host}", _proxmoxHost);
             _logger.LogInformation("Node: {Node}", _node);
             _logger.LogInformation("API Token present: {HasToken}", !string.IsNullOrEmpty(_apiToken));
+            _logger.LogInformation("Username present: {HasUsername}", !string.IsNullOrEmpty(_username));
 
-            if (string.IsNullOrEmpty(_proxmoxHost) || string.IsNullOrEmpty(_apiToken) || string.IsNullOrEmpty(_node))
+            if (string.IsNullOrEmpty(_proxmoxHost) || string.IsNullOrEmpty(_node))
             {
                 _logger.LogError("Missing required Proxmox configuration!");
                 throw new InvalidOperationException("Proxmox configuration is incomplete");
@@ -38,6 +46,11 @@ namespace RHCSAExam.Services
             // Accept self-signed certificates (for dev only!)
             var handler = new HttpClientHandler
             {
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+
+            var authHandler = new HttpClientHandler
+            {
                 ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true,
                 CookieContainer = _cookieContainer,
                 UseCookies = true
@@ -47,7 +60,71 @@ namespace RHCSAExam.Services
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "RHCSAExam/1.0");
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("PVEAPIToken", _apiToken);
 
+            _authHttpClient = new HttpClient(authHandler);
+            _authHttpClient.DefaultRequestHeaders.Add("User-Agent", "RHCSAExam/1.0");
+
             _logger.LogInformation("ProxmoxService initialized successfully");
+        }
+
+        // Authenticate with username/password to get auth cookie
+        private async Task<bool> AuthenticateAsync()
+        {
+            if (string.IsNullOrEmpty(_username) || string.IsNullOrEmpty(_password))
+            {
+                _logger.LogWarning("Username or password not configured, skipping cookie authentication");
+                return false;
+            }
+
+            _logger.LogInformation("Authenticating with username/password to get auth cookie...");
+
+            var url = $"{_proxmoxHost}/api2/json/access/ticket";
+            var formData = new Dictionary<string, string>
+            {
+                { "username", _username },
+                { "password", _password }
+            };
+
+            var content = new FormUrlEncodedContent(formData);
+
+            try
+            {
+                var response = await _authHttpClient.PostAsync(url, content);
+                var body = await response.Content.ReadAsStringAsync();
+
+                _logger.LogDebug("Auth response status: {Status}", response.StatusCode);
+                _logger.LogDebug("Auth response body: {Body}", body);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Authentication failed: {Status} - {Body}", response.StatusCode, body);
+                    return false;
+                }
+
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var result = JsonSerializer.Deserialize<ProxmoxApiResponse<AuthData>>(body, options);
+
+                if (result?.Data != null)
+                {
+                    _authTicket = result.Data.Ticket;
+                    _csrfToken = result.Data.CSRFPreventionToken;
+
+                    _logger.LogInformation("Authentication successful - Ticket and CSRF token obtained");
+                    
+                    // Manually add cookie to container
+                    var uri = new Uri(_proxmoxHost);
+                    _cookieContainer.Add(uri, new Cookie("PVEAuthCookie", _authTicket));
+                    
+                    return true;
+                }
+
+                _logger.LogWarning("Authentication response missing data");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during authentication");
+                return false;
+            }
         }
 
         // Clone VM from template
@@ -228,84 +305,29 @@ namespace RHCSAExam.Services
         {
             _logger.LogInformation("Getting VNC console info for VM {VmId} using cookie authentication", vmId);
 
-            // Step 1: Get VNC proxy info (port and ticket)
-            var url = $"{_proxmoxHost}/api2/json/nodes/{_node}/qemu/{vmId}/vncproxy";
-            var payload = new { websocket = 1 };
-            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-
-            try
+            // Authenticate to get cookie if we don't have one
+            if (string.IsNullOrEmpty(_authTicket))
             {
-                var response = await _httpClient.PostAsync(url, content);
-                var body = await response.Content.ReadAsStringAsync();
-
-                _logger.LogInformation("VNC proxy response status: {Status}", response.StatusCode);
-                _logger.LogDebug("VNC proxy response body: {Body}", body);
-
-                if (!response.IsSuccessStatusCode)
+                var authenticated = await AuthenticateAsync();
+                if (!authenticated)
                 {
-                    _logger.LogError("Failed to get VNC proxy. Status: {Status}, Body: {Body}", response.StatusCode, body);
-                    throw new HttpRequestException($"Proxmox API returned {response.StatusCode}: {body}");
+                    throw new InvalidOperationException("Failed to authenticate for console access");
                 }
-
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var result = JsonSerializer.Deserialize<ProxmoxApiResponse<VncTicketData>>(body, options);
-
-                if (result == null || result.Data == null)
-                {
-                    _logger.LogError("Failed to deserialize VNC proxy response. Body: {Body}", body);
-                    throw new InvalidOperationException("Invalid response format from Proxmox API");
-                }
-
-                var port = result.Data.Port;
-                var ticket = result.Data.Ticket ?? throw new InvalidOperationException("Ticket is null");
-
-                _logger.LogInformation("VNC proxy info obtained - Port: {Port}", port);
-
-                // Step 2: Build the noVNC URL using cookie authentication
-                // The cookie should be set automatically by the HttpClient's CookieContainer
-                var consoleUrl = $"{_proxmoxHost}/?console=kvm&novnc=1&node={_node}&vmid={vmId}";
-
-                return new VncConsoleInfo
-                {
-                    Url = consoleUrl,
-                    Port = port,
-                    Ticket = ticket,
-                    // Extract auth cookie if needed
-                    PveAuthCookie = GetAuthCookie()
-                };
             }
-            catch (Exception ex)
+
+            // Build the noVNC URL - the cookie will be sent automatically by the browser
+            var consoleUrl = $"{_proxmoxHost}/?console=kvm&novnc=1&node={_node}&vmid={vmId}";
+
+            _logger.LogInformation("Console URL generated: {Url}", consoleUrl);
+            _logger.LogInformation("Auth ticket available: {HasTicket}", !string.IsNullOrEmpty(_authTicket));
+
+            return new VncConsoleInfo
             {
-                _logger.LogError(ex, "Failed to get VNC console URL for VM {VmId}", vmId);
-                throw;
-            }
-        }
-
-        // Get authentication cookie from cookie container
-        private string? GetAuthCookie()
-        {
-            try
-            {
-                var uri = new Uri(_proxmoxHost);
-                var cookies = _cookieContainer.GetCookies(uri);
-
-                foreach (Cookie cookie in cookies)
-                {
-                    if (cookie.Name == "PVEAuthCookie")
-                    {
-                        _logger.LogDebug("Found PVEAuthCookie: {Cookie}", cookie.Value);
-                        return cookie.Value;
-                    }
-                }
-
-                _logger.LogWarning("PVEAuthCookie not found in cookie container");
-                return null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving auth cookie");
-                return null;
-            }
+                Url = consoleUrl,
+                Port = 0, // Not needed with cookie auth
+                Ticket = _authTicket ?? "",
+                CSRFToken = _csrfToken
+            };
         }
 
         // Helper to get next available VM ID
@@ -404,6 +426,13 @@ namespace RHCSAExam.Services
         public T Data { get; set; }
     }
 
+    public class AuthData
+    {
+        public string Ticket { get; set; }
+        public string CSRFPreventionToken { get; set; }
+        public string Username { get; set; }
+    }
+
     public class VmStatusData
     {
         public string Status { get; set; }
@@ -419,57 +448,12 @@ namespace RHCSAExam.Services
         public int Uptime { get; set; }
     }
 
-    public class VncTicketData
-    {
-        public string Ticket { get; set; }
-
-        private object _port;
-
-        [System.Text.Json.Serialization.JsonPropertyName("port")]
-        public object PortRaw
-        {
-            get => _port;
-            set => _port = value;
-        }
-
-        [System.Text.Json.Serialization.JsonIgnore]
-        public int Port
-        {
-            get
-            {
-                if (_port == null) return 0;
-
-                if (_port is int intPort)
-                    return intPort;
-
-                if (_port is string strPort && int.TryParse(strPort, out int parsedPort))
-                    return parsedPort;
-
-                if (_port is System.Text.Json.JsonElement jsonElement)
-                {
-                    if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.Number)
-                        return jsonElement.GetInt32();
-                    if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        var str = jsonElement.GetString();
-                        if (int.TryParse(str, out int parsed))
-                            return parsed;
-                    }
-                }
-
-                return 0;
-            }
-        }
-
-        public string Upid { get; set; }
-    }
-
     public class VncConsoleInfo
     {
         public string Url { get; set; }
         public int Port { get; set; }
         public string Ticket { get; set; }
-        public string? PveAuthCookie { get; set; }
+        public string? CSRFToken { get; set; }
     }
 
     public class VmInfoData
