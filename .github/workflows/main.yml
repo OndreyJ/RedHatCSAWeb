@@ -67,3 +67,11 @@ jobs:
             --network rhcsa-net \
             -p 80:80 \
             redhatcsaweb-frontend
+
+      # 8️⃣ Cleanup unused Docker resources after deploy
+      - name: Docker Cleanup
+        run: |
+          docker container prune -f
+          docker image prune -a -f
+          docker builder prune -a -f
+          docker network prune -f
