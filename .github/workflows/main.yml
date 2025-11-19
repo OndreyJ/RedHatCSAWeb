@@ -1,36 +1,69 @@
-name: Manual Deployment
+name: Deploy RedHat CSA Web
 
 on:
-  workflow_dispatch: # Allows manual trigger in GitHub UI
+  workflow_dispatch: # Manual trigger
 
 jobs:
   deploy:
-    name: Deploy to Server
-    runs-on: self-hosted # Uses your self-hosted runner machine
+    runs-on: self-hosted
+    name: Build and Deploy Frontend & Backend
 
     steps:
-      - name: Checkout code
+      # 1️⃣ Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Example: Copy repo files to a deployment directory
-      - name: Deploy files
+      # 2️⃣ Set up Node for frontend
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # 3️⃣ Build Frontend
+      - name: Build Angular Frontend
+        working-directory: ./frontend
         run: |
-          echo "Starting deployment..."
-          DEPLOY_DIR="/var/www/redhatweb"
-
-          # Ensure the directory exists
-          mkdir -p "$DEPLOY_DIR"
-
-          # Copy files (excluding .git)
-          rsync -av --include='frontend/***' --exclude='*'  ./ "$DEPLOY_DIR/"
-
-          # Go to Frontend
-          cd /var/www/redhatweb/frontend
-
-          # Install dependencies
           npm install
+          npm run build -- --configuration production
 
-          # Build Frontend
-          ng build
+      # 4️⃣ Build Backend Docker image
+      - name: Build Backend Docker Image
+        working-directory: ./backend
+        run: |
+          docker build --no-cache \
+            -t redhatcsaweb-backend .
 
-          echo "Deployment complete!"
+      # 5️⃣ Build Frontend Docker image
+      - name: Build Frontend Docker Image
+        working-directory: ./frontend
+        run: |
+          docker build --no-cache -t redhatcsaweb-frontend .
+
+      # 6️⃣ Stop & remove old containers if exist
+      - name: Stop old containers
+        run: |
+          docker rm -f rhcsa-backend || true
+          docker rm -f rhcsa-frontend || true
+
+      # 7️⃣ Create network and start containers
+      - name: Create network & start containers
+        run: |
+          docker network inspect rhcsa-net >/dev/null 2>&1 || docker network create rhcsa-net
+
+          # Run backend
+          docker run -d --name rhcsa-backend \
+            --network rhcsa-net \
+            -p 8080:8080 \
+            -e "PROXMOX__TEMPLATES__SERVER1=${{ secrets.PROXMOX__TEMPLATES__SERVER1 }}" \
+            -e "PROXMOX__TEMPLATES__SERVER2=${{ secrets.PROXMOX__TEMPLATES__SERVER2 }}" \
+            -e "PROXMOX__TEMPLATES__SERVER3=${{ secrets.PROXMOX__TEMPLATES__SERVER3 }}" \
+            -e "PROXMOX__HOST=${{ secrets.PROXMOX__HOST }}" \
+            -e "PROXMOX__NODE=${{ secrets.PROXMOX__NODE }}" \
+            -e "PROXMOX__APITOKEN=${{ secrets.PROXMOX__APITOKEN }}" \
+            redhatcsaweb-backend
+
+          # Run frontend
+          docker run -d --name rhcsa-frontend \
+            --network rhcsa-net \
+            -p 80:80 \
+            redhatcsaweb-frontend
