@@ -17,12 +17,18 @@ jobs:
         with:
           node-version: 20
 
+      # ----------------------------
+      # FRONTEND BUILD
+      # ----------------------------
       - name: Build Angular Frontend
         working-directory: ./frontend
         run: |
           npm install
           npm run build -- --configuration production
 
+      # ----------------------------
+      # DOCKER BUILDS
+      # ----------------------------
       - name: Build Backend Docker Image
         working-directory: ./backend
         run: |
@@ -33,87 +39,17 @@ jobs:
         run: |
           docker build --no-cache -t redhatcsaweb-frontend .
 
-      # 🚀 Create / Update systemd network service
-      - name: Create rhcsa-network systemd service
-        run: |
-          echo "[Unit]
-          Description=Ensure RHCSA Docker Network Exists
-          Requires=docker.service
-          After=docker.service
+      # ----------------------------
+      # RESTART SYSTEMD SERVICES (PRE-CREATED)
+      # ----------------------------
+      - name: Restart Backend Service
+        run: sudo systemctl restart rhcsa-backend
 
-          [Service]
-            Type=oneshot
-            ExecStart=/usr/bin/docker network inspect rhcsa-net >/dev/null 2>&1 || /usr/bin/docker network create rhcsa-net
-            RemainAfterExit=yes
+      - name: Restart Frontend Service
+        run: sudo systemctl restart rhcsa-frontend
 
-          [Install]
-          WantedBy=multi-user.target" | sudo tee /etc/systemd/system/rhcsa-network.service > /dev/null
-
-                    sudo systemctl daemon-reload
-                    sudo systemctl enable rhcsa-network
-                    sudo systemctl start rhcsa-network
-
-                # 🚀 Create / Update Backend systemd service
-                - name: Create rhcsa-backend systemd service
-                  run: |
-                    echo "[Unit]
-          Description=RHCSA Backend Container
-          Requires=docker.service rhcsa-network.service
-          After=docker.service rhcsa-network.service
-
-          [Service]
-          Restart=always
-          RestartSec=5
-
-          ExecStart=/usr/bin/docker run --name rhcsa-backend \
-            --network rhcsa-net \
-            -p 8080:8080 \
-            -e PROXMOX__TEMPLATES__SERVER1=${PROXMOX__TEMPLATES__SERVER1} \
-            -e PROXMOX__TEMPLATES__SERVER2=${PROXMOX__TEMPLATES__SERVER2} \
-            -e PROXMOX__TEMPLATES__SERVER3=${PROXMOX__TEMPLATES__SERVER3} \
-            -e PROXMOX__HOST=${PROXMOX__HOST} \
-            -e PROXMOX__NODE=${PROXMOX__NODE} \
-            -e PROXMOX__APITOKEN=${PROXMOX__APITOKEN} \
-            redhatcsaweb-backend
-
-          ExecStop=/usr/bin/docker stop rhcsa-backend
-          ExecStopPost=/usr/bin/docker rm rhcsa-backend
-
-          [Install]
-          WantedBy=multi-user.target" | sudo tee /etc/systemd/system/rhcsa-backend.service > /dev/null
-
-                    sudo systemctl daemon-reload
-                    sudo systemctl enable rhcsa-backend
-                    sudo systemctl restart rhcsa-backend
-
-                # 🚀 Create / Update Frontend systemd service
-                - name: Create rhcsa-frontend systemd service
-                  run: |
-                    echo "[Unit]
-          Description=RHCSA Frontend Container
-          Requires=docker.service rhcsa-network.service
-          After=docker.service rhcsa-network.service
-
-          [Service]
-          Restart=always
-          RestartSec=5
-
-          ExecStart=/usr/bin/docker run --name rhcsa-frontend \
-            --network rhcsa-net \
-            -p 80:80 \
-            redhatcsaweb-frontend
-
-          ExecStop=/usr/bin/docker stop rhcsa-frontend
-          ExecStopPost=/usr/bin/docker rm rhcsa-frontend
-
-          [Install]
-          WantedBy=multi-user.target" | sudo tee /etc/systemd/system/rhcsa-frontend.service > /dev/null
-
-                    sudo systemctl daemon-reload
-                    sudo systemctl enable rhcsa-frontend
-                    sudo systemctl restart rhcsa-frontend
-
-                # Optional: Clean up old images
-                - name: Docker Cleanup
-                  run: |
-                    docker image prune -a -f
+      # ----------------------------
+      # OPTIONAL: CLEAN UP OLD IMAGES
+      # ----------------------------
+      - name: Docker Cleanup
+        run: docker image prune -a -f
