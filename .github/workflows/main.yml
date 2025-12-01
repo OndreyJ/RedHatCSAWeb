@@ -1,7 +1,7 @@
 name: Deploy RedHat CSA Web
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -9,71 +9,111 @@ jobs:
     name: Build and Deploy Frontend & Backend
 
     steps:
-      # 1️⃣ Checkout code
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Set up Node for frontend
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
-      # 3️⃣ Build Frontend
       - name: Build Angular Frontend
         working-directory: ./frontend
         run: |
           npm install
           npm run build -- --configuration production
 
-      # 4️⃣ Build Backend Docker image
       - name: Build Backend Docker Image
         working-directory: ./backend
         run: |
-          docker build --no-cache \
-            -t redhatcsaweb-backend .
+          docker build --no-cache -t redhatcsaweb-backend .
 
-      # 5️⃣ Build Frontend Docker image
       - name: Build Frontend Docker Image
         working-directory: ./frontend
         run: |
           docker build --no-cache -t redhatcsaweb-frontend .
 
-      # 6️⃣ Stop & remove old containers if exist
-      - name: Stop old containers
+      # 🚀 Create / Update systemd network service
+      - name: Create rhcsa-network systemd service
         run: |
-          docker rm -f rhcsa-backend || true
-          docker rm -f rhcsa-frontend || true
+          echo "[Unit]
+Description=Ensure RHCSA Docker Network Exists
+Requires=docker.service
+After=docker.service
 
-      # 7️⃣ Create network and start containers
-      - name: Create network & start containers
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker network inspect rhcsa-net >/dev/null 2>&1 || /usr/bin/docker network create rhcsa-net
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target" | sudo tee /etc/systemd/system/rhcsa-network.service > /dev/null
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable rhcsa-network
+          sudo systemctl start rhcsa-network
+
+      # 🚀 Create / Update Backend systemd service
+      - name: Create rhcsa-backend systemd service
         run: |
-          docker network inspect rhcsa-net >/dev/null 2>&1 || docker network create rhcsa-net
+          echo "[Unit]
+Description=RHCSA Backend Container
+Requires=docker.service rhcsa-network.service
+After=docker.service rhcsa-network.service
 
-          # Run backend
-          docker run -d --name rhcsa-backend \
-            --network rhcsa-net \
-            -p 8080:8080 \
-            -e "PROXMOX__TEMPLATES__SERVER1=${{ secrets.PROXMOX__TEMPLATES__SERVER1 }}" \
-            -e "PROXMOX__TEMPLATES__SERVER2=${{ secrets.PROXMOX__TEMPLATES__SERVER2 }}" \
-            -e "PROXMOX__TEMPLATES__SERVER3=${{ secrets.PROXMOX__TEMPLATES__SERVER3 }}" \
-            -e "PROXMOX__HOST=${{ secrets.PROXMOX__HOST }}" \
-            -e "PROXMOX__NODE=${{ secrets.PROXMOX__NODE }}" \
-            -e "PROXMOX__APITOKEN=${{ secrets.PROXMOX__APITOKEN }}" \
-            -e "PROXMOX__USERNAME=${{ secrets.PROXMOX__USERNAME }}" \
-            -e "PROXMOX__PASSWORD=${{ secrets.PROXMOX__PASSWORD }}" \
-            redhatcsaweb-backend
+[Service]
+Restart=always
+RestartSec=5
 
-          # Run frontend
-          docker run -d --name rhcsa-frontend \
-            --network rhcsa-net \
-            -p 80:80 \
-            redhatcsaweb-frontend
+ExecStart=/usr/bin/docker run --name rhcsa-backend \
+  --network rhcsa-net \
+  -p 8080:8080 \
+  -e PROXMOX__TEMPLATES__SERVER1=${PROXMOX__TEMPLATES__SERVER1} \
+  -e PROXMOX__TEMPLATES__SERVER2=${PROXMOX__TEMPLATES__SERVER2} \
+  -e PROXMOX__TEMPLATES__SERVER3=${PROXMOX__TEMPLATES__SERVER3} \
+  -e PROXMOX__HOST=${PROXMOX__HOST} \
+  -e PROXMOX__NODE=${PROXMOX__NODE} \
+  -e PROXMOX__APITOKEN=${PROXMOX__APITOKEN} \
+  redhatcsaweb-backend
 
-      # 8️⃣ Cleanup unused Docker resources after deploy
+ExecStop=/usr/bin/docker stop rhcsa-backend
+ExecStopPost=/usr/bin/docker rm rhcsa-backend
+
+[Install]
+WantedBy=multi-user.target" | sudo tee /etc/systemd/system/rhcsa-backend.service > /dev/null
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable rhcsa-backend
+          sudo systemctl restart rhcsa-backend
+
+      # 🚀 Create / Update Frontend systemd service
+      - name: Create rhcsa-frontend systemd service
+        run: |
+          echo "[Unit]
+Description=RHCSA Frontend Container
+Requires=docker.service rhcsa-network.service
+After=docker.service rhcsa-network.service
+
+[Service]
+Restart=always
+RestartSec=5
+
+ExecStart=/usr/bin/docker run --name rhcsa-frontend \
+  --network rhcsa-net \
+  -p 80:80 \
+  redhatcsaweb-frontend
+
+ExecStop=/usr/bin/docker stop rhcsa-frontend
+ExecStopPost=/usr/bin/docker rm rhcsa-frontend
+
+[Install]
+WantedBy=multi-user.target" | sudo tee /etc/systemd/system/rhcsa-frontend.service > /dev/null
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable rhcsa-frontend
+          sudo systemctl restart rhcsa-frontend
+
+      # Optional: Clean up old images
       - name: Docker Cleanup
         run: |
-          docker container prune -f
           docker image prune -a -f
-          docker builder prune -a -f
-          docker network prune -f
