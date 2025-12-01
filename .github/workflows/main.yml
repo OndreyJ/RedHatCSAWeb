@@ -40,15 +40,6 @@ jobs:
           docker build --no-cache -t redhatcsaweb-frontend .
 
       # ----------------------------
-      # RESTART SYSTEMD SERVICES (PRE-CREATED)
-      # ----------------------------
-      - name: Restart Backend Service
-        run: sudo systemctl restart rhcsa-backend
-
-      - name: Restart Frontend Service
-        run: sudo systemctl restart rhcsa-frontend
-
-      # ----------------------------
       # OPTIONAL: CLEAN UP OLD IMAGES
       # ----------------------------
       - name: Docker Cleanup
